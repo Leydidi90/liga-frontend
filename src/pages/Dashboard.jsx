@@ -9,6 +9,7 @@ export default function Dashboard() {
   const [editModalTenant, setEditModalTenant] = useState(null);
   const [isProcessingPayment, setIsProcessingPayment] = useState(false);
   const [isSendingEmail, setIsSendingEmail] = useState(false);
+  const [deleteConfirmTenant, setDeleteConfirmTenant] = useState(null);
   const [paymentStep, setPaymentStep] = useState('menu'); // 'menu' | 'checkout'
   const [formData, setFormData] = useState({ 
       nombre_liga: '', 
@@ -98,22 +99,24 @@ export default function Dashboard() {
   const executeRealPayment = (e) => {
     e.preventDefault();
     setIsProcessingPayment(true);
-    // Simular un delay de API bancaria (2 segundos)
+    // Simular un delay de API bancaria (3 segundos para mayor realismo)
     setTimeout(async () => {
        try {
-         await fetch(`${API_URL}/api/tenants/${paymentModalTenant.id}/payment`, {
+         const res = await fetch(`${API_URL}/api/tenants/${paymentModalTenant.id}/payment`, {
            method: 'POST'
          });
-         fetchTenants();
+         if (!res.ok) throw new Error("Error en el procesador de pagos");
+         
+         await fetchTenants(); // Recargar datos
          setIsProcessingPayment(false);
-         setPaymentModalTenant(null); // Desaparecer el modal inmediatamente para mostrar la reactividad
-         toast.success(`Transacción aprobada.\nSe cobraron $${getCost(paymentModalTenant.plan)}.00 MXN.`, { duration: 5000 });
+         setPaymentStep('success'); // Mostrar pantalla de éxito
+         toast.success(`Transacción aprobada satisfactoriamente.`, { duration: 4000 });
        } catch (err) {
          console.error(err);
-         toast.error("Error al procesar el pago");
+         toast.error("La transacción fue rechazada por el banco emisor.");
          setIsProcessingPayment(false);
        }
-    }, 2000);
+    }, 3000);
   };
 
   const handleSendReminder = async (id, email) => {
@@ -128,6 +131,20 @@ export default function Dashboard() {
     }
     setIsSendingEmail(false);
     setPaymentModalTenant(null);
+  };
+
+  const handleDelete = async (id) => {
+    try {
+      const res = await fetch(`${API_URL}/api/tenants/${id}`, {
+        method: 'DELETE'
+      });
+      if (!res.ok) throw new Error('Error al eliminar ligas');
+      setTenants(tenants.filter(t => t.id !== id));
+      toast.success('Liga eliminada permanentemente');
+      setDeleteConfirmTenant(null);
+    } catch (err) {
+      toast.error(err.message);
+    }
   };
 
   return (
@@ -214,6 +231,14 @@ export default function Dashboard() {
                    >
                      💳 Gestionar
                    </button>
+                   <button 
+                     className="btn btn-sm" 
+                     onClick={() => setDeleteConfirmTenant(t)}
+                     style={{ background: 'rgba(239, 68, 68, 0.1)', color: '#ef4444', border: '1px solid rgba(239, 68, 68, 0.2)' }}
+                     title="DAR DE BAJA LIGA"
+                   >
+                     🗑️
+                   </button>
                 </td>
               </tr>
             ))}
@@ -241,6 +266,14 @@ export default function Dashboard() {
               <div className="form-group">
                 <label>Subdominio / Slug (Único)</label>
                 <input required value={formData.subdominio_o_slug} onChange={e => setFormData({...formData, subdominio_o_slug: e.target.value.toLowerCase().replace(/\s+/g, '-')})} placeholder="ej: liga-toluca" />
+              </div>
+              <div className="form-group">
+                <label>Nombre del Dueño / Organizador</label>
+                <input required value={formData.dueno_nombre} onChange={e => setFormData({...formData, dueno_nombre: e.target.value})} placeholder="Ej: Juan Pérez" />
+              </div>
+              <div className="form-group">
+                <label>Correo Electrónico (Para facturas y avisos)</label>
+                <input required type="email" value={formData.dueno_email} onChange={e => setFormData({...formData, dueno_email: e.target.value})} placeholder="ejemplo@correo.com" />
               </div>
               <div className="form-group">
                 <label>Plan Inicial</label>
@@ -339,51 +372,151 @@ export default function Dashboard() {
 
             {paymentStep === 'checkout' && (
               <>
-                <h3 style={{ marginTop: 0, marginBottom: '0.5rem', color: '#ec4899' }}>Checkout de Suscripción</h3>
+                <h3 style={{ marginTop: 0, marginBottom: '0.5rem', color: '#ec4899' }}>Pasarela de Pago Segura</h3>
                 <p style={{ color: 'var(--text-muted)', marginBottom: '1.5rem', fontSize: '0.9rem' }}>
-                  Simulador de Tarjeta de Crédito (Vista de pago para {paymentModalTenant.dueno_nombre})
+                  Simulador de Transacción Local (Vista segura para {paymentModalTenant.dueno_nombre})
                 </p>
                 <form onSubmit={executeRealPayment}>
-                  <div className="payment-card-visual">
-                    <div style={{display: 'flex', justifyContent: 'space-between', marginBottom: '1rem'}}>
-                       <span style={{fontWeight: 'bold', letterSpacing: '1px'}}>Credit Card</span>
-                       <span>🌐 Logo</span>
+                  {/* Tarjeta Visual Mejorada */}
+                  <div className="payment-card-visual" style={{ background: 'linear-gradient(135deg, #1e1b4b 0%, #0f172a 100%)', padding: '1.5rem', border: '1px solid rgba(99, 102, 241, 0.3)', boxShadow: '0 20px 50px rgba(0,0,0,0.5)' }}>
+                    <div style={{display: 'flex', justifyContent: 'space-between', marginBottom: '1.5rem', alignItems: 'center'}}>
+                       <div style={{ display: 'flex', flexDirection: 'column', gap: '2px'}}>
+                          <span style={{fontSize: '0.6rem', textTransform: 'uppercase', letterSpacing: '2px', color: 'rgba(255,255,255,0.5)'}}>Credit Card</span>
+                          <span style={{fontWeight: 'bold', fontSize: '1rem', letterSpacing: '1px'}}>LIGAMASTER PLATINUM</span>
+                       </div>
+                       <div style={{ width: '45px', height: '30px', background: 'rgba(255,255,255,0.1)', borderRadius: '6px', display: 'flex', alignItems: 'center', justifyContent: 'center'}}>
+                          <div style={{ display: 'flex', gap: '-5px'}}>
+                             <div style={{width: '20px', height: '20px', borderRadius: '50%', background: '#ff5f00', opacity: 0.8}}></div>
+                             <div style={{width: '20px', height: '20px', borderRadius: '50%', background: '#eb001b', opacity: 0.8, marginLeft: '-10px'}}></div>
+                          </div>
+                       </div>
                     </div>
-                    <div className="form-group" style={{ marginBottom: '0'}}>
-                      <input required placeholder="0000 0000 0000 0000" pattern="[0-9]{16}" maxLength="16" style={{ background: 'transparent', border: 'none', borderBottom: '1px solid rgba(255,255,255,0.4)', borderRadius: 0, padding: '0.5rem 0', fontSize: '1.2rem', letterSpacing: '3px' }}/>
+                    
+                    <div className="form-group" style={{ marginBottom: '1.5rem'}}>
+                      <input required placeholder="**** **** **** ****" pattern="[0-9]{16}" maxLength="16" style={{ background: 'rgba(255,255,255,0.05)', border: '1px solid rgba(255,255,255,0.1)', borderRadius: '8px', padding: '0.8rem', fontSize: '1.4rem', letterSpacing: '5px', textAlign: 'center', width: '100%', color: '#fff' }}/>
                     </div>
-                    <div style={{ display: 'flex', gap: '1rem', marginTop: '1rem'}}>
-                       <div className="form-group" style={{flex: 1}}>
-                         <label style={{fontSize: '0.7rem'}}>Exp (MM/YY)</label>
-                         <input required placeholder="12/26" maxLength="5" style={{ background: 'transparent', border: '1px solid rgba(255,255,255,0.2)', padding: '0.4rem'}} />
+                    
+                    <div style={{ display: 'flex', gap: '1.5rem'}}>
+                       <div className="form-group" style={{flex: 2}}>
+                         <label style={{fontSize: '0.6rem', textTransform: 'uppercase', color: 'rgba(255,255,255,0.4)', marginBottom: '4px'}}>Titular de la tarjeta</label>
+                         <input required defaultValue={paymentModalTenant.dueno_nombre} style={{ background: 'transparent', border: 'none', borderBottom: '1px solid rgba(255,255,255,0.2)', padding: '0.3rem 0', borderRadius: 0, fontSize: '0.9rem'}} />
                        </div>
                        <div className="form-group" style={{flex: 1}}>
-                         <label style={{fontSize: '0.7rem'}}>CVC</label>
-                         <input required placeholder="123" maxLength="4" style={{ background: 'transparent', border: '1px solid rgba(255,255,255,0.2)', padding: '0.4rem'}} />
+                         <label style={{fontSize: '0.6rem', textTransform: 'uppercase', color: 'rgba(255,255,255,0.4)', marginBottom: '4px'}}>Venc (MM/YY)</label>
+                         <input required placeholder="12/28" maxLength="5" style={{ background: 'transparent', border: 'none', borderBottom: '1px solid rgba(255,255,255,0.2)', padding: '0.3rem 0', borderRadius: 0, fontSize: '0.9rem'}} />
+                       </div>
+                       <div className="form-group" style={{flex: 0.8}}>
+                         <label style={{fontSize: '0.6rem', textTransform: 'uppercase', color: 'rgba(255,255,255,0.4)', marginBottom: '4px'}}>CVC</label>
+                         <input required placeholder="***" maxLength="3" type="password" style={{ background: 'transparent', border: 'none', borderBottom: '1px solid rgba(255,255,255,0.2)', padding: '0.3rem 0', borderRadius: 0, fontSize: '1.1rem'}} />
                        </div>
                     </div>
                   </div>
 
-                  <div className="form-group" style={{marginTop: '1.5rem'}}>
-                    <label>Nombre del Titular</label>
-                    <input required defaultValue={paymentModalTenant.dueno_nombre} />
+                  {/* Resumen de cobro */}
+                  <div style={{ marginTop: '1.5rem', background: 'rgba(255,255,255,0.03)', padding: '1rem', borderRadius: '12px', border: '1px solid rgba(255,255,255,0.05)' }}>
+                     <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '0.5rem'}}>
+                        <span style={{ color: 'var(--text-muted)', fontSize: '0.9rem'}}>Suscripción Plan {paymentModalTenant.plan}</span>
+                        <span style={{ fontWeight: 'bold'}}>${getCost(paymentModalTenant.plan)}.00 MXN</span>
+                     </div>
+                     <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.8rem', color: 'var(--text-muted)' }}>
+                        <span>I.V.A (Incluido)</span>
+                        <span>$0.00</span>
+                     </div>
+                     <div style={{ borderTop: '1px solid rgba(255,255,255,0.1)', marginTop: '0.8rem', paddingTop: '0.8rem', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                        <span style={{ fontWeight: 'bold', color: '#fff'}}>Total a pagar</span>
+                        <span style={{ fontWeight: '800', fontSize: '1.3rem', color: '#ec4899'}}>${getCost(paymentModalTenant.plan)}.00 MXN</span>
+                     </div>
                   </div>
 
                   <button 
                     type="submit" 
                     className="btn btn-primary" 
                     disabled={isProcessingPayment}
-                    style={{ width: '100%', marginTop: '1.5rem', justifyContent: 'center', background: '#ec4899', padding: '1rem', fontSize: '1.1rem' }}
+                    style={{ width: '100%', marginTop: '1.5rem', justifyContent: 'center', background: 'linear-gradient(135deg, #ec4899, #be185d)', padding: '1.1rem', fontSize: '1.1rem', borderRadius: '14px', boxShadow: '0 10px 25px rgba(236, 72, 153, 0.4)' }}
                   >
-                    {isProcessingPayment ? '↻ Procesando Transacción...' : `Pagar $${getCost(paymentModalTenant.plan)}.00 MXN`}
+                    {isProcessingPayment ? (
+                      <span style={{ display: 'flex', alignItems: 'center', gap: '10px'}}>
+                         <div className="spinner-mini"></div> Autorizando Transacción...
+                      </span>
+                    ) : `Confirmar y Pagar Ahora`}
                   </button>
-                  <button type="button" className="btn btn-outline" style={{ width: '100%', marginTop: '0.5rem', justifyContent: 'center'}} onClick={() => setPaymentStep('menu')}>
-                    Cancelar
-                  </button>
+                  
+                  <p style={{ textAlign: 'center', fontSize: '0.7rem', color: 'var(--text-muted)', marginTop: '1rem', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '5px' }}>
+                    🔒 Encriptación SSL de 256 bits activa.
+                  </p>
+
+                  {!isProcessingPayment && (
+                    <button type="button" className="btn btn-outline" style={{ width: '100%', marginTop: '0.5rem', justifyContent: 'center', border: 'none', color: 'var(--text-muted)'}} onClick={() => setPaymentStep('menu')}>
+                      Regresar
+                    </button>
+                  )}
                 </form>
               </>
             )}
 
+            {paymentStep === 'success' && (
+              <div style={{ textAlign: 'center', padding: '1rem', animation: 'fadeIn 0.5s ease' }}>
+                 <div style={{ width: '80px', height: '80px', background: 'rgba(16, 185, 129, 0.1)', borderRadius: '50%', display: 'flex', alignItems: 'center', justifyContent: 'center', margin: '0 auto 1.5rem', border: '2px solid #10b981', boxShadow: '0 0 30px rgba(16, 185, 129, 0.2)' }}>
+                    <span style={{ fontSize: '2.5rem' }}>✅</span>
+                 </div>
+                 <h2 style={{ marginBottom: '0.5rem', color: '#fff' }}>¡Pago Exitoso!</h2>
+                 <p style={{ color: 'var(--text-muted)', fontSize: '0.95rem', marginBottom: '1.5rem' }}>
+                    La suscripción de <strong>{paymentModalTenant.nombre_liga}</strong> ha sido actualizada correctamente.
+                 </p>
+                 
+                 <div style={{ background: 'rgba(59, 130, 246, 0.1)', border: '1px solid rgba(59, 130, 246, 0.2)', padding: '1rem', borderRadius: '12px', marginBottom: '2rem' }}>
+                    <p style={{ margin: 0, color: '#60a5fa', fontWeight: '600', fontSize: '0.9rem', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '8px' }}>
+                       📧 Confirmación enviada
+                    </p>
+                    <p style={{ margin: '4px 0 0 0', color: 'rgba(255,255,255,0.6)', fontSize: '0.75rem' }}>
+                       Se ha enviado un correo automático y el comprobante a: {paymentModalTenant.dueno_email}
+                    </p>
+                 </div>
+
+                 <button 
+                  className="btn btn-primary" 
+                  style={{ width: '100%', justifyContent: 'center', padding: '1rem' }}
+                  onClick={() => { setPaymentModalTenant(null); setPaymentStep('menu'); }}
+                 >
+                    Finalizar y Continuar
+                 </button>
+              </div>
+            )}
+
+          </div>
+        </div>
+      )}
+
+      {deleteConfirmTenant && (
+        <div className="modal-overlay">
+          <div className="glass-panel modal-content popup-animation" style={{ maxWidth: '450px', border: '1px solid rgba(239, 68, 68, 0.3)' }}>
+            <div style={{ textAlign: 'center', padding: '1rem' }}>
+              <div style={{ width: '70px', height: '70px', background: 'rgba(239, 68, 68, 0.1)', borderRadius: '50%', display: 'flex', alignItems: 'center', justifyContent: 'center', margin: '0 auto 1.5rem', border: '2px solid rgba(239, 68, 68, 0.2)' }}>
+                <span style={{ fontSize: '2rem' }}>⚠️</span>
+              </div>
+              <h3 style={{ color: '#fff', marginBottom: '1rem' }}>¿Eliminar Liga Definitivamente?</h3>
+              <p style={{ color: 'var(--text-muted)', fontSize: '0.9rem', lineHeight: '1.5', marginBottom: '2rem' }}>
+                Estás a punto de dar de baja la liga <strong style={{color: '#fff'}}>{deleteConfirmTenant.nombre_liga}</strong>.<br/><br/>
+                <span style={{ color: '#ef4444', fontWeight: 'bold' }}>Esta acción es irreversible</span> y borrará todos los equipos, partidos y torneos asociados.
+              </p>
+              
+              <div style={{ display: 'flex', gap: '1rem' }}>
+                <button 
+                  className="btn btn-outline" 
+                  style={{ flex: 1, justifyContent: 'center' }} 
+                  onClick={() => setDeleteConfirmTenant(null)}
+                >
+                  Cancelar
+                </button>
+                <button 
+                  className="btn" 
+                  style={{ flex: 1, justifyContent: 'center', background: '#ef4444', color: '#fff', border: 'none' }} 
+                  onClick={() => handleDelete(deleteConfirmTenant.id)}
+                >
+                  Sí, Eliminar Todo
+                </button>
+              </div>
+            </div>
           </div>
         </div>
       )}

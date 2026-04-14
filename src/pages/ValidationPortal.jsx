@@ -14,7 +14,11 @@ export default function ValidationPortal() {
     fetch(`${API_URL}/api/tenants`)
        .then(res => res.json())
        .then(data => {
-           if(Array.isArray(data)) setLigas(data.filter(d => d.estatus_pago));
+           if(Array.isArray(data)) {
+               const now = new Date();
+               // Filtrar por estatus manual Y por fecha de vencimiento
+               setLigas(data.filter(d => d.estatus_pago && new Date(d.fecha_vencimiento) > now));
+           }
            setLoading(false);
        })
        .catch(() => setLoading(false));
@@ -25,8 +29,15 @@ export default function ValidationPortal() {
     if (!slug) return;
     try {
       const resp = await fetch(`${API_URL}/api/verify-tenant/${slug}`);
+      const data = await resp.json();
+
       if (!resp.ok) {
-        toast.error("El código de liga no existe.");
+        if (resp.status === 403) {
+          // La liga existe pero está suspendida
+          navigate('/suspended', { state: { tenant: data.data } });
+        } else {
+          toast.error("El código de liga no existe.");
+        }
       } else {
         navigate(`/organizer/${slug}/login`);
       }

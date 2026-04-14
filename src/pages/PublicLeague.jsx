@@ -17,7 +17,8 @@ export default function PublicLeague() {
         const res = await fetch(`${API_URL}/api/verify-tenant/${slug}`);
         const data = await res.json();
         if (!res.ok) {
-           setError("Esta liga está en Suspensión de Servicio Activo.");
+           setError("No disponible.");
+           window.location.href = "/"; // Redirigir al inicio para que "desaparezca"
            return;
         }
         setTenantData(data.data);

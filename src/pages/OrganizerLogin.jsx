@@ -21,6 +21,10 @@ export default function OrganizerLogin() {
       const data = await res.json();
 
       if (!res.ok) {
+        if (res.status === 403) {
+          navigate('/suspended', { state: { tenant: data.data || { nombre_liga: slug } } });
+          return;
+        }
         throw new Error(data.error || 'Error al iniciar sesión');
       }
 
