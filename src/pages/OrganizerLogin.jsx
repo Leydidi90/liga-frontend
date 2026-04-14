@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import toast from 'react-hot-toast';
+import API_URL from '../api';
 
 export default function OrganizerLogin() {
   const { slug } = useParams();
@@ -12,7 +13,7 @@ export default function OrganizerLogin() {
     e.preventDefault();
     setLoading(true);
     try {
-      const res = await fetch(`http://localhost:3000/api/organizer/${slug}/login`, {
+      const res = await fetch(`${API_URL}/api/organizer/${slug}/login`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ slug, password })

@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import toast from 'react-hot-toast';
+import API_URL from '../api';
 
 export default function ValidationPortal() {
   const [ligas, setLigas] = useState([]);
@@ -10,7 +11,7 @@ export default function ValidationPortal() {
   const navigate = useNavigate();
 
   useEffect(() => {
-    fetch('http://localhost:3000/api/tenants')
+    fetch(`${API_URL}/api/tenants`)
        .then(res => res.json())
        .then(data => {
            if(Array.isArray(data)) setLigas(data.filter(d => d.estatus_pago));
@@ -23,7 +24,7 @@ export default function ValidationPortal() {
     e.preventDefault();
     if (!slug) return;
     try {
-      const resp = await fetch(`http://localhost:3000/api/verify-tenant/${slug}`);
+      const resp = await fetch(`${API_URL}/api/verify-tenant/${slug}`);
       if (!resp.ok) {
         toast.error("El código de liga no existe.");
       } else {

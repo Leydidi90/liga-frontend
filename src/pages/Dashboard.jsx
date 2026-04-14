@@ -1,5 +1,6 @@
 import React, { useEffect, useState } from 'react';
 import toast from 'react-hot-toast';
+import API_URL from '../api';
 
 export default function Dashboard() {
   const [tenants, setTenants] = useState([]);
@@ -20,7 +21,7 @@ export default function Dashboard() {
 
   const fetchTenants = async () => {
     try {
-      const res = await fetch('http://localhost:3000/api/tenants');
+      const res = await fetch(`${API_URL}/api/tenants`);
       const data = await res.json();
       setTenants(data);
     } catch (err) {
@@ -48,7 +49,7 @@ export default function Dashboard() {
   const handleCreate = async (e) => {
     e.preventDefault();
     try {
-      await fetch('http://localhost:3000/api/tenants', {
+      await fetch(`${API_URL}/api/tenants`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(formData)
@@ -64,7 +65,7 @@ export default function Dashboard() {
   const handleEditSubmit = async (e) => {
     e.preventDefault();
     try {
-      await fetch(`http://localhost:3000/api/tenants/${editModalTenant.id}`, {
+      await fetch(`${API_URL}/api/tenants/${editModalTenant.id}`, {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -83,7 +84,7 @@ export default function Dashboard() {
 
   const handleToggleStatus = async (id, currentStatus) => {
     try {
-      await fetch(`http://localhost:3000/api/tenants/${id}/status`, {
+      await fetch(`${API_URL}/api/tenants/${id}/status`, {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ estatus_pago: !currentStatus })
@@ -100,7 +101,7 @@ export default function Dashboard() {
     // Simular un delay de API bancaria (2 segundos)
     setTimeout(async () => {
        try {
-         await fetch(`http://localhost:3000/api/tenants/${paymentModalTenant.id}/payment`, {
+         await fetch(`${API_URL}/api/tenants/${paymentModalTenant.id}/payment`, {
            method: 'POST'
          });
          fetchTenants();
@@ -118,7 +119,7 @@ export default function Dashboard() {
   const handleSendReminder = async (id, email) => {
     setIsSendingEmail(true);
     try {
-      const res = await fetch(`http://localhost:3000/api/tenants/${id}/send-reminder`, { method: 'POST' });
+      const res = await fetch(`${API_URL}/api/tenants/${id}/send-reminder`, { method: 'POST' });
       const data = await res.json();
       if (!res.ok) throw new Error(data.error);
       toast.success(data.message, { duration: 4000 });

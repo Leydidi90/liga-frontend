@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import toast from 'react-hot-toast';
+import API_URL from '../api';
 
 export default function OrganizerDashboard() {
   const { slug } = useParams();
@@ -67,7 +68,7 @@ export default function OrganizerDashboard() {
     // 1. Verificar Seguridad Middleware
     const verificarAcceso = async () => {
       try {
-        const res = await fetch(`http://localhost:3000/api/verify-tenant/${slug}`);
+        const res = await fetch(`${API_URL}/api/verify-tenant/${slug}`);
         const data = await res.json();
         if (!res.ok) {
            toast.error(data.error);
@@ -93,22 +94,22 @@ export default function OrganizerDashboard() {
   };
 
   const fetchEquipos = async () => {
-    const res = await fetchWithAuth(`http://localhost:3000/api/organizer/${slug}/equipos`);
+    const res = await fetchWithAuth(`${API_URL}/api/organizer/${slug}/equipos`);
     if (res) setEquipos(await res.json());
   };
 
   const fetchPartidos = async () => {
-    const res = await fetchWithAuth(`http://localhost:3000/api/organizer/${slug}/calendario`);
+    const res = await fetchWithAuth(`${API_URL}/api/organizer/${slug}/calendario`);
     if (res) setPartidos(await res.json());
   };
 
   const fetchTorneos = async () => {
-    const res = await fetchWithAuth(`http://localhost:3000/api/organizer/${slug}/torneos`);
+    const res = await fetchWithAuth(`${API_URL}/api/organizer/${slug}/torneos`);
     if (res) setTorneos(await res.json());
   };
 
   const fetchArbitros = async () => {
-    const res = await fetchWithAuth(`http://localhost:3000/api/organizer/${slug}/arbitros`);
+    const res = await fetchWithAuth(`${API_URL}/api/organizer/${slug}/arbitros`);
     if (res) setArbitros(await res.json());
   };
 
@@ -124,7 +125,7 @@ export default function OrganizerDashboard() {
   const handleAddEquipo = async (e) => {
     e.preventDefault();
     try {
-      const res = await fetchWithAuth(`http://localhost:3000/api/organizer/${slug}/equipos`, {
+      const res = await fetchWithAuth(`${API_URL}/api/organizer/${slug}/equipos`, {
         method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(equipoForm)
       });
       if (!res.ok) throw new Error("Error creando");
@@ -137,7 +138,7 @@ export default function OrganizerDashboard() {
   const handleAddTorneo = async (e) => {
     e.preventDefault();
     try {
-      const res = await fetchWithAuth(`http://localhost:3000/api/organizer/${slug}/torneos`, {
+      const res = await fetchWithAuth(`${API_URL}/api/organizer/${slug}/torneos`, {
         method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(torneoForm)
       });
       if (res.ok) { 
@@ -152,8 +153,8 @@ export default function OrganizerDashboard() {
     e.preventDefault();
     try {
       const url = editandoArbitroId 
-          ? `http://localhost:3000/api/organizer/${slug}/arbitros/${editandoArbitroId}`
-          : `http://localhost:3000/api/organizer/${slug}/arbitros`;
+          ? `${API_URL}/api/organizer/${slug}/arbitros/${editandoArbitroId}`
+          : `${API_URL}/api/organizer/${slug}/arbitros`;
       const method = editandoArbitroId ? 'PUT' : 'POST';
 
       const res = await fetchWithAuth(url, {
@@ -188,7 +189,7 @@ export default function OrganizerDashboard() {
   const handleDeleteArbitro = async (id) => {
       if(!window.confirm("¿Seguro que deseas dar de baja a este árbitro?")) return;
       try {
-          const res = await fetchWithAuth(`http://localhost:3000/api/organizer/${slug}/arbitros/${id}`, { method: 'DELETE' });
+          const res = await fetchWithAuth(`${API_URL}/api/organizer/${slug}/arbitros/${id}`, { method: 'DELETE' });
           if(res && res.ok) { fetchArbitros(); toast.success("Árbitro dado de baja"); }
       } catch(err){}
   };
@@ -238,7 +239,7 @@ export default function OrganizerDashboard() {
       };
       
       try {
-        const res = await fetchWithAuth(`http://localhost:3000/api/organizer/${slug}/partidos/${activeMatch.id}`, {
+        const res = await fetchWithAuth(`${API_URL}/api/organizer/${slug}/partidos/${activeMatch.id}`, {
             method: 'PUT', headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({ goles_local: parseInt(statsForm.goles_local), goles_visitante: parseInt(statsForm.goles_visitante), stats: statsObj })
         });
@@ -257,7 +258,7 @@ export default function OrganizerDashboard() {
        toast.error("Debes tener al menos 2 equipos para programar una jornada.");
        return;
     }
-    const myPromise = fetchWithAuth(`http://localhost:3000/api/organizer/${slug}/generar-calendario`, { method: 'POST' });
+    const myPromise = fetchWithAuth(`${API_URL}/api/organizer/${slug}/generar-calendario`, { method: 'POST' });
     
     toast.promise(myPromise, {
       loading: 'Calculando Rol de Juegos (Algoritmo Round Robin)...',
@@ -278,7 +279,7 @@ export default function OrganizerDashboard() {
   const handleSaveProgramacion = async (e) => {
     e.preventDefault();
     try {
-        const res = await fetchWithAuth(`http://localhost:3000/api/organizer/${slug}/partidos/${partidoAProgramar.id}/programacion`, {
+        const res = await fetchWithAuth(`${API_URL}/api/organizer/${slug}/partidos/${partidoAProgramar.id}/programacion`, {
             method: 'PUT', headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify(programacionForm)
         });

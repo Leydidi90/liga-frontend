@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { useParams, Link } from 'react-router-dom';
+import API_URL from '../api';
 
 export default function PublicLeague() {
   const { slug } = useParams();
@@ -13,7 +14,7 @@ export default function PublicLeague() {
   useEffect(() => {
     const fetchPublicData = async () => {
       try {
-        const res = await fetch(`http://localhost:3000/api/verify-tenant/${slug}`);
+        const res = await fetch(`${API_URL}/api/verify-tenant/${slug}`);
         const data = await res.json();
         if (!res.ok) {
            setError("Esta liga está en Suspensión de Servicio Activo.");
@@ -22,11 +23,11 @@ export default function PublicLeague() {
         setTenantData(data.data);
 
         // Fetch standings
-        const res2 = await fetch(`http://localhost:3000/api/organizer/${slug}/equipos`);
+        const res2 = await fetch(`${API_URL}/api/organizer/${slug}/equipos`);
         setEquipos(await res2.json());
 
         // Fetch calendar matches
-        const res3 = await fetch(`http://localhost:3000/api/organizer/${slug}/calendario`);
+        const res3 = await fetch(`${API_URL}/api/organizer/${slug}/calendario`);
         setPartidos(await res3.json());
 
       } catch(err) {
