@@ -72,7 +72,7 @@ export default function OrganizerDashboard() {
         const data = await res.json();
         if (!res.ok) {
            toast.error(data.error);
-           navigate('/suspended', { state: { tenant: data.data } });
+           navigate('/suspended', { state: { tenant: data.data, error: data.error } });
            return;
         }
         setTenantData(data.data);

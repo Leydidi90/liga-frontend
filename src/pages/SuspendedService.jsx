@@ -5,6 +5,7 @@ export default function SuspendedService() {
   const location = useLocation();
   const navigate = useNavigate();
   const tenant = location.state?.tenant;
+  const specificError = location.state?.error;
 
   return (
     <div style={{ minHeight: '100vh', display: 'flex', alignItems: 'center', justifyContent: 'center', background: 'radial-gradient(circle at top right, #450a0a, #000)', padding: '2rem', fontFamily: "'Inter', sans-serif" }}>
@@ -32,7 +33,7 @@ export default function SuspendedService() {
                <p style={{ margin: '0 0 0.5rem 0', fontSize: '0.85rem', color: '#9ca3af', textTransform: 'uppercase', fontWeight: 'bold', letterSpacing: '1px' }}>Detalles del Estado</p>
                <p style={{ margin: 0, color: '#fca5a5', fontSize: '0.95rem' }}>
                  • Suscripción: Plan {tenant.plan}<br/>
-                 • Motivo: Pago pendiente o periodo de gracia finalizado.
+                 • Motivo: {specificError || "Pago pendiente o periodo de gracia finalizado."}
                </p>
             </div>
           </div>

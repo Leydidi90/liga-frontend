@@ -22,7 +22,7 @@ export default function OrganizerLogin() {
 
       if (!res.ok) {
         if (res.status === 403) {
-          navigate('/suspended', { state: { tenant: data.data || { nombre_liga: slug } } });
+          navigate('/suspended', { state: { tenant: data.data || { nombre_liga: slug }, error: data.error } });
           return;
         }
         throw new Error(data.error || 'Error al iniciar sesión');

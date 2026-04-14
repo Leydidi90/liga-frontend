@@ -34,7 +34,7 @@ export default function ValidationPortal() {
       if (!resp.ok) {
         if (resp.status === 403) {
           // La liga existe pero está suspendida
-          navigate('/suspended', { state: { tenant: data.data } });
+          navigate('/suspended', { state: { tenant: data.data, error: data.error } });
         } else {
           toast.error("El código de liga no existe.");
         }

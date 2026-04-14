@@ -205,9 +205,12 @@ export default function Dashboard() {
                 <td>{t.plan}</td>
                 <td>{new Date(t.fecha_vencimiento).toLocaleDateString()}</td>
                 <td>
-                  <span className={`badge ${t.estatus_pago ? 'active' : 'inactive'}`}>
-                    {t.estatus_pago ? 'Activo' : 'Suspendido'}
-                  </span>
+                  {(() => {
+                    const isExpired = new Date(t.fecha_vencimiento) < new Date();
+                    if (!t.estatus_pago) return <span className="badge inactive">Suspendido</span>;
+                    if (isExpired) return <span className="badge" style={{ background: 'rgba(245, 158, 11, 0.1)', color: '#f59e0b', border: '1px solid rgba(245, 158, 11, 0.3)' }}>Expirado</span>;
+                    return <span className="badge active">Activo</span>;
+                  })()}
                 </td>
                 <td className="actions">
                    <button 
