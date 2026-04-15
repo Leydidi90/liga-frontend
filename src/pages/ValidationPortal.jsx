@@ -11,13 +11,11 @@ export default function ValidationPortal() {
   const navigate = useNavigate();
 
   useEffect(() => {
-    fetch(`${API_URL}/api/tenants`)
+    fetch(`${API_URL}/api/public/ligas`)
        .then(res => res.json())
        .then(data => {
            if(Array.isArray(data)) {
-               const now = new Date();
-               // Filtrar por estatus manual Y por fecha de vencimiento
-               setLigas(data.filter(d => d.estatus_pago && new Date(d.fecha_vencimiento) > now));
+               setLigas(data);
            }
            setLoading(false);
        })
