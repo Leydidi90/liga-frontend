@@ -7,6 +7,7 @@ import Login from './pages/Login';
 import OrganizerDashboard from './pages/OrganizerDashboard';
 import OrganizerLogin from './pages/OrganizerLogin';
 import PublicLeague from './pages/PublicLeague';
+import OrganizerAccess from './pages/OrganizerAccess';
 import { Toaster } from 'react-hot-toast';
 
 // ProtectedRoute Component
@@ -66,6 +67,7 @@ function App() {
         <Route path="/login" element={<Login />} />
         <Route path="/admin" element={<ProtectedRoute><AppLayout><Dashboard /></AppLayout></ProtectedRoute>} />
         <Route path="/suspended" element={<SuspendedService />} />
+        <Route path="/organizer/access" element={<OrganizerAccess />} />
         
         {/* Rutas de Clientes (Organizador y Público) */}
         <Route path="/organizer/:slug/login" element={<OrganizerLogin />} />

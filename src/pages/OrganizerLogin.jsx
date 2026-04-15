@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { useParams, useNavigate } from 'react-router-dom';
+import { useParams, useNavigate, Link } from 'react-router-dom';
 import toast from 'react-hot-toast';
 import API_URL from '../api';
 
@@ -41,7 +41,31 @@ export default function OrganizerLogin() {
 
   return (
     <div style={{ minHeight: '100vh', display: 'flex', alignItems: 'center', justifyContent: 'center', background: 'radial-gradient(circle at top left, #1e1b4b, #000)', padding: '2rem' }}>
-      <div className="glass-panel popup-animation" style={{ width: '100%', maxWidth: '450px', padding: '3rem', textAlign: 'center', border: '1px solid rgba(255,255,255,0.1)' }}>
+      <div style={{ width: '100%', maxWidth: '450px' }}>
+        <Link
+          to="/"
+          style={{
+            display: 'inline-flex',
+            alignItems: 'center',
+            gap: '0.4rem',
+            position: 'fixed',
+            top: '1.25rem',
+            left: '1.25rem',
+            zIndex: 20,
+            color: '#93c5fd',
+            border: '1px solid rgba(147, 197, 253, 0.35)',
+            borderRadius: '8px',
+            padding: '0.45rem 0.75rem',
+            textDecoration: 'none',
+            fontSize: '0.85rem',
+            fontWeight: 600,
+            background: 'rgba(15, 23, 42, 0.6)'
+          }}
+        >
+          ← Volver al Home
+        </Link>
+
+        <div className="glass-panel popup-animation" style={{ width: '100%', padding: '3rem', textAlign: 'center', border: '1px solid rgba(255,255,255,0.1)' }}>
         <div style={{ width: '70px', height: '70px', background: 'linear-gradient(135deg, #ec4899, #8b5cf6)', borderRadius: '18px', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '2rem', margin: '0 auto 1.5rem', boxShadow: '0 0 20px rgba(236, 72, 153, 0.4)' }}>
           🛡️
         </div>
@@ -78,6 +102,7 @@ export default function OrganizerLogin() {
             ¿Olvidaste la contraseña? <br/>
             Contacta con el soporte técnico de LigaMaster.
           </p>
+        </div>
         </div>
       </div>
     </div>

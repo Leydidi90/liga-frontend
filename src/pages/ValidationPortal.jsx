@@ -1,13 +1,10 @@
 import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
-import toast from 'react-hot-toast';
 import API_URL from '../api';
 
 export default function ValidationPortal() {
   const [ligas, setLigas] = useState([]);
   const [loading, setLoading] = useState(true);
-  const [showOrganizerModal, setShowOrganizerModal] = useState(false);
-  const [slug, setSlug] = useState('');
   const navigate = useNavigate();
 
   useEffect(() => {
@@ -21,28 +18,6 @@ export default function ValidationPortal() {
        })
        .catch(() => setLoading(false));
   }, []);
-
-  const handleOrganizerAccess = async (e) => {
-    e.preventDefault();
-    if (!slug) return;
-    try {
-      const resp = await fetch(`${API_URL}/api/verify-tenant/${slug}`);
-      const data = await resp.json();
-
-      if (!resp.ok) {
-        if (resp.status === 403) {
-          // La liga existe pero está suspendida
-          navigate('/suspended', { state: { tenant: data.data, error: data.error } });
-        } else {
-          toast.error("El código de liga no existe.");
-        }
-      } else {
-        navigate(`/organizer/${slug}/login`);
-      }
-    } catch (err) {
-      toast.error('Error de conexión');
-    }
-  };
 
   return (
     <div style={{ background: '#020202', minHeight: '100vh', color: 'white', fontFamily: "'Inter', sans-serif" }}>
@@ -67,7 +42,7 @@ export default function ValidationPortal() {
           </div>
           <div style={{ display: 'flex', alignItems: 'center', gap: '1.5rem' }}>
               <span style={{ fontSize: '1.1rem', cursor: 'pointer' }}>🔍</span>
-              <button onClick={() => setShowOrganizerModal(true)} style={{ background: 'rgba(255,255,255,0.1)', color: '#fff', border: '1px solid rgba(255,255,255,0.2)', padding: '0.5rem 1rem', borderRadius: '4px', cursor: 'pointer', fontSize: '0.85rem', fontWeight: 'bold' }}>Inicia sesión</button>
+              <button onClick={() => navigate('/organizer/access')} style={{ background: 'rgba(255,255,255,0.1)', color: '#fff', border: '1px solid rgba(255,255,255,0.2)', padding: '0.5rem 1rem', borderRadius: '4px', cursor: 'pointer', fontSize: '0.85rem', fontWeight: 'bold' }}>Organizador</button>
           </div>
       </nav>
 
@@ -164,7 +139,7 @@ export default function ValidationPortal() {
               <div style={{ display: 'flex', gap: '5rem' }}>
                   <div style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
                       <span style={{ color: '#fff', fontWeight: 'bold', marginBottom: '0.5rem', fontSize: '0.8rem', textTransform: 'uppercase', letterSpacing: '1px' }}>🏢 Corporativo</span>
-                      <button onClick={() => setShowOrganizerModal(true)} style={{ background: 'none', border: 'none', color: '#4b5563', textAlign: 'left', cursor: 'pointer', padding: 0, fontSize: '0.95rem' }} className="link-hover">Oficina del Organizador</button>
+                      <button onClick={() => navigate('/organizer/access')} style={{ background: 'none', border: 'none', color: '#4b5563', textAlign: 'left', cursor: 'pointer', padding: 0, fontSize: '0.95rem' }} className="link-hover">Oficina del Organizador</button>
                       <button onClick={() => navigate('/login')} style={{ background: 'none', border: 'none', color: '#4b5563', textAlign: 'left', cursor: 'pointer', padding: 0, fontSize: '0.95rem' }} className="link-hover">SaaS Central Admin</button>
                       <span style={{ color: '#4b5563', fontSize: '0.95rem', cursor: 'pointer' }}>Privacidad</span>
                   </div>
@@ -182,36 +157,6 @@ export default function ValidationPortal() {
               © 2026 LigaMaster SaaS Enterprise. Todos los derechos reservados.
           </div>
       </footer>
-
-      {/* Organizer Login / Identification Modal */}
-      {showOrganizerModal && (
-          <div style={{ position: 'fixed', top: 0, left: 0, width: '100%', height: '100%', background: 'rgba(0,0,0,0.9)', backdropFilter: 'blur(20px)', zIndex: 9999, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '1rem' }}>
-              <div className="glass-panel" style={{ width: '100%', maxWidth: '400px', padding: '3.5rem 2.5rem', position: 'relative', background: '#0a0a0a', border: '1px solid #222', borderRadius: '24px', boxShadow: '0 25px 50px -12px rgba(0, 0, 0, 0.5)' }}>
-                  <button onClick={() => setShowOrganizerModal(false)} style={{ position: 'absolute', top: '1.5rem', right: '1.5rem', background: '#222', border: 'none', color: '#fff', fontSize: '1.2rem', cursor: 'pointer', width: '35px', height: '35px', borderRadius: '50%', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>×</button>
-                  <div style={{ textAlign: 'center', marginBottom: '2rem' }}>
-                    <div style={{ fontSize: '3rem', marginBottom: '1rem' }}>📂</div>
-                    <h2 style={{ color: '#fff', margin: 0, fontSize: '1.8rem', fontWeight: '900' }}>Acceso Organizador</h2>
-                  </div>
-                  <form onSubmit={handleOrganizerAccess}>
-                      <div style={{ marginBottom: '1.5rem' }}>
-                          <label style={{ color: '#6b7280', fontSize: '0.75rem', display: 'block', marginBottom: '0.5rem', fontWeight: 'bold', textTransform: 'uppercase' }}>Código de Liga (Slug)</label>
-                          <input 
-                            required
-                            autoFocus
-                            placeholder="Ej: liga-fernando"
-                            value={slug}
-                            onChange={e => setSlug(e.target.value.toLowerCase().replace(/\s+/g, '-'))}
-                            style={{ width: '100%', padding: '1rem', background: '#151515', border: '1px solid #222', color: '#fff', borderRadius: '12px', fontSize: '1.1rem', outline: 'none', textAlign: 'center', letterSpacing: '1px' }}
-                          />
-                      </div>
-                      <button type="submit" style={{ width: '100%', padding: '1.1rem', background: '#3b82f6', color: '#fff', border: 'none', fontWeight: '900', borderRadius: '12px', cursor: 'pointer', fontSize: '1rem', transition: 'all 0.3s' }} className="block-hover">
-                          IDENTIFICAR LIGAY LOGIN →
-                      </button>
-                  </form>
-              </div>
-          </div>
-      )}
-
     </div>
   );
 }

@@ -4,21 +4,12 @@ import API_URL from '../api';
 
 export default function Dashboard() {
   const [tenants, setTenants] = useState([]);
-  const [showModal, setShowModal] = useState(false);
   const [paymentModalTenant, setPaymentModalTenant] = useState(null);
   const [editModalTenant, setEditModalTenant] = useState(null);
   const [isProcessingPayment, setIsProcessingPayment] = useState(false);
   const [isSendingEmail, setIsSendingEmail] = useState(false);
   const [deleteConfirmTenant, setDeleteConfirmTenant] = useState(null);
   const [paymentStep, setPaymentStep] = useState('menu'); // 'menu' | 'checkout'
-  const [formData, setFormData] = useState({ 
-      nombre_liga: '', 
-      subdominio_o_slug: '', 
-      plan: 'Bronce',
-      dueno_nombre: '',
-      dueno_email: '',
-      password: ''
-  });
 
   const getAuthHeaders = (extraHeaders = {}) => {
     const token = localStorage.getItem('ligamaster_token');
@@ -63,22 +54,6 @@ export default function Dashboard() {
   const ingresos = tenants.filter(t => t.estatus_pago).reduce((acc, t) => {
     return acc + getCost(t.plan);
   }, 0);
-
-  const handleCreate = async (e) => {
-    e.preventDefault();
-    try {
-      await fetch(`${API_URL}/api/tenants`, {
-        method: 'POST',
-        headers: getAuthHeaders({ 'Content-Type': 'application/json' }),
-        body: JSON.stringify(formData)
-      });
-      setShowModal(false);
-      setFormData({ nombre_liga: '', subdominio_o_slug: '', plan: 'Bronce', dueno_nombre: '', dueno_email: '', password: '' });
-      fetchTenants();
-    } catch (err) {
-      console.error(err);
-    }
-  };
 
   const handleEditSubmit = async (e) => {
     e.preventDefault();
@@ -176,9 +151,9 @@ export default function Dashboard() {
            <span className="premium-badge-txt">⚡ Acceso Exclusivo SuperAdmin</span>
            <h2>Panel de Control</h2>
         </div>
-        <button className="btn btn-primary" onClick={() => setShowModal(true)}>
-          ➕ Nueva Liga
-        </button>
+        <span style={{ color: 'var(--text-muted)', fontSize: '0.85rem' }}>
+          El registro de ligas se realiza por el organizador.
+        </span>
       </div>
 
       <div className="metrics-grid">
@@ -278,57 +253,30 @@ export default function Dashboard() {
         </table>
       </div>
 
-      {showModal && (
-        <div className="modal-overlay">
-          <div className="glass-panel modal-content popup-animation">
-            <button className="modal-close" onClick={() => setShowModal(false)}>✕</button>
-            <h3 style={{ marginTop: 0, marginBottom: '1.5rem' }}>Registrar Nueva Liga</h3>
-            <form onSubmit={handleCreate}>
-              <div className="form-group">
-                <label>Nombre Comercial</label>
-                <input required value={formData.nombre_liga} onChange={e => setFormData({...formData, nombre_liga: e.target.value})} placeholder="Ej: Liga Master Toluca" />
-              </div>
-              <div className="form-group">
-                <label>Subdominio / Slug (Único)</label>
-                <input required value={formData.subdominio_o_slug} onChange={e => setFormData({...formData, subdominio_o_slug: e.target.value.toLowerCase().replace(/\s+/g, '-')})} placeholder="ej: liga-toluca" />
-              </div>
-              <div className="form-group">
-                <label>Nombre del Dueño / Organizador</label>
-                <input required value={formData.dueno_nombre} onChange={e => setFormData({...formData, dueno_nombre: e.target.value})} placeholder="Ej: Juan Pérez" />
-              </div>
-              <div className="form-group">
-                <label>Correo Electrónico (Para facturas y avisos)</label>
-                <input required type="email" value={formData.dueno_email} onChange={e => setFormData({...formData, dueno_email: e.target.value})} placeholder="ejemplo@correo.com" />
-              </div>
-              <div className="form-group">
-                <label>Plan Inicial</label>
-                <select value={formData.plan} onChange={e => setFormData({...formData, plan: e.target.value})}>
-                  <option value="Bronce">Bronce ($50/mes)</option>
-                  <option value="Plata">Plata ($100/mes)</option>
-                  <option value="Oro">Oro ($200/mes)</option>
-                </select>
-              </div>
-              <hr style={{ border: 'none', borderTop: '1px solid rgba(255,255,255,0.1)', margin: '1rem 0' }} />
-              <div style={{ background: 'rgba(236, 72, 153, 0.05)', padding: '1rem', borderRadius: '10px', border: '1px solid rgba(236, 72, 153, 0.2)', marginTop: '1rem' }}>
-                <label style={{ color: '#ec4899', fontWeight: 'bold', fontSize: '0.8rem', display: 'block', marginBottom: '0.5rem' }}>🔑 CONTRASEÑA DE ACCESO ORGANIZADOR</label>
-                <input required type="text" value={formData.password} onChange={e => setFormData({...formData, password: e.target.value})} placeholder="Ej: admin123" style={{ width: '100%', background: 'rgba(0,0,0,0.3)', border: '1px solid rgba(255,255,255,0.1)', color: '#fff', padding: '0.8rem', borderRadius: '8px' }} />
-                <span style={{ fontSize: '0.7rem', color: '#9ca3af', marginTop: '0.4rem', display: 'block' }}>Esta es la clave que usará el cliente para entrar a su match center.</span>
-              </div>
-
-              <button type="submit" className="btn btn-primary" style={{ width: '100%', marginTop: '1.5rem', justifyContent: 'center' }}>
-                Crear Liga y Asignar Dueño
-              </button>
-            </form>
-          </div>
-        </div>
-      )}
-
       {editModalTenant && (
         <div className="modal-overlay">
           <div className="glass-panel modal-content popup-animation">
             <button className="modal-close" onClick={() => setEditModalTenant(null)}>✕</button>
             <h3 style={{ marginTop: 0, marginBottom: '1.5rem' }}>Editar Datos - {editModalTenant.nombre_liga}</h3>
             <form onSubmit={handleEditSubmit}>
+              <div className="form-group">
+                <label>Nombre del Dueño / Organizador</label>
+                <input
+                  type="text"
+                  value={editModalTenant.dueno_nombre || ''}
+                  onChange={e => setEditModalTenant({ ...editModalTenant, dueno_nombre: e.target.value })}
+                  placeholder="Ej: Juan Pérez"
+                />
+              </div>
+              <div className="form-group">
+                <label>Correo Electrónico</label>
+                <input
+                  type="email"
+                  value={editModalTenant.dueno_email || ''}
+                  onChange={e => setEditModalTenant({ ...editModalTenant, dueno_email: e.target.value })}
+                  placeholder="ejemplo@correo.com"
+                />
+              </div>
               <div className="form-group">
                 <label>Plan Configurado</label>
                 <select value={editModalTenant.plan} onChange={e => setEditModalTenant({...editModalTenant, plan: e.target.value})}>
