@@ -20,13 +20,30 @@ export default function Dashboard() {
       password: ''
   });
 
+  const getAuthHeaders = (extraHeaders = {}) => {
+    const token = localStorage.getItem('ligamaster_token');
+    return {
+      ...extraHeaders,
+      ...(token ? { Authorization: `Bearer ${token}` } : {})
+    };
+  };
+
   const fetchTenants = async () => {
     try {
-      const res = await fetch(`${API_URL}/api/tenants`);
+      const res = await fetch(`${API_URL}/api/tenants`, {
+        headers: getAuthHeaders()
+      });
+      if (res.status === 401 || res.status === 403) {
+        toast.error('Tu sesión expiró. Inicia sesión de nuevo.');
+        localStorage.removeItem('ligamaster_token');
+        window.location.href = '/login';
+        return;
+      }
       const data = await res.json();
-      setTenants(data);
+      setTenants(Array.isArray(data) ? data : []);
     } catch (err) {
       console.error(err);
+      setTenants([]);
     }
   };
 
@@ -52,7 +69,7 @@ export default function Dashboard() {
     try {
       await fetch(`${API_URL}/api/tenants`, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: getAuthHeaders({ 'Content-Type': 'application/json' }),
         body: JSON.stringify(formData)
       });
       setShowModal(false);
@@ -68,7 +85,7 @@ export default function Dashboard() {
     try {
       await fetch(`${API_URL}/api/tenants/${editModalTenant.id}`, {
         method: 'PUT',
-        headers: { 'Content-Type': 'application/json' },
+        headers: getAuthHeaders({ 'Content-Type': 'application/json' }),
         body: JSON.stringify({
           dueno_nombre: editModalTenant.dueno_nombre,
           dueno_email: editModalTenant.dueno_email,
@@ -87,7 +104,7 @@ export default function Dashboard() {
     try {
       await fetch(`${API_URL}/api/tenants/${id}/status`, {
         method: 'PUT',
-        headers: { 'Content-Type': 'application/json' },
+        headers: getAuthHeaders({ 'Content-Type': 'application/json' }),
         body: JSON.stringify({ estatus_pago: !currentStatus })
       });
       fetchTenants();
@@ -103,7 +120,8 @@ export default function Dashboard() {
     setTimeout(async () => {
        try {
          const res = await fetch(`${API_URL}/api/tenants/${paymentModalTenant.id}/payment`, {
-           method: 'POST'
+           method: 'POST',
+           headers: getAuthHeaders()
          });
          if (!res.ok) throw new Error("Error en el procesador de pagos");
          
@@ -122,7 +140,10 @@ export default function Dashboard() {
   const handleSendReminder = async (id, email) => {
     setIsSendingEmail(true);
     try {
-      const res = await fetch(`${API_URL}/api/tenants/${id}/send-reminder`, { method: 'POST' });
+      const res = await fetch(`${API_URL}/api/tenants/${id}/send-reminder`, {
+        method: 'POST',
+        headers: getAuthHeaders()
+      });
       const data = await res.json();
       if (!res.ok) throw new Error(data.error);
       toast.success(data.message, { duration: 4000 });
@@ -136,7 +157,8 @@ export default function Dashboard() {
   const handleDelete = async (id) => {
     try {
       const res = await fetch(`${API_URL}/api/tenants/${id}`, {
-        method: 'DELETE'
+        method: 'DELETE',
+        headers: getAuthHeaders()
       });
       if (!res.ok) throw new Error('Error al eliminar ligas');
       setTenants(tenants.filter(t => t.id !== id));
