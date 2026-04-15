@@ -43,6 +43,10 @@ export default function OrganizerDashboard() {
 
   const fetchWithAuth = async (url, options = {}) => {
     const token = localStorage.getItem(`tenant_token_${slug}`);
+    if (!token) {
+      navigate(`/organizer/${slug}/login`);
+      return null;
+    }
     const headers = {
       ...options.headers,
       'Authorization': `Bearer ${token}`
