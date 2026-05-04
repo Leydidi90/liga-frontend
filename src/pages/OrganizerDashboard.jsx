@@ -3,14 +3,37 @@ import { useParams, useNavigate } from 'react-router-dom';
 import toast from 'react-hot-toast';
 import API_URL from '../api';
 
+const FOOTBALL_CATEGORIES = [
+  'Chupones',
+  'Infantil Menor',
+  'Infantil Mayor',
+  'Juvenil Menor',
+  'Juvenil Mayor',
+  'Sub-7',
+  'Sub-9',
+  'Sub-11',
+  'Sub-13',
+  'Sub-15',
+  'Sub-17',
+  'Sub-20',
+  'Primera División',
+  'Segunda División',
+  'Libre Varonil',
+  'Libre Femenil',
+  'Veteranos',
+  'Master'
+];
+
 export default function OrganizerDashboard() {
   const { slug } = useParams();
   const navigate = useNavigate();
   const [equipos, setEquipos] = useState([]);
   const [partidos, setPartidos] = useState([]);
   const [torneos, setTorneos] = useState([]);
-  const [torneoForm, setTorneoForm] = useState({ nombre: '', formato: 'Liga (Todos contra todos)', fecha_inicio: '', fecha_fin: '', estatus: 'En Registro', premio: '' });
+  const [torneoForm, setTorneoForm] = useState({ nombre: '', categoria: '', formato: 'Liga (Todos contra todos)', fecha_inicio: '', fecha_fin: '', estatus: 'En Registro', premio: '' });
   const [arbitros, setArbitros] = useState([]);
+  const [enrollmentConfigDraft, setEnrollmentConfigDraft] = useState({});
+  const [enrollmentsByTorneo, setEnrollmentsByTorneo] = useState({});
   const [equipoForm, setEquipoForm] = useState({ nombre: '', delegado: '', escudo: '' });
   const [jornadaActiva, setJornadaActiva] = useState('Todas');
   const [activeSegment, setActiveSegment] = useState('EQUIPOS'); // 'EQUIPOS', 'CALENDARIO', 'ARBITROS'
@@ -52,13 +75,30 @@ export default function OrganizerDashboard() {
       'Authorization': `Bearer ${token}`
     };
     
-    const res = await fetch(url, { ...options, headers });
+    let res = null;
+    try {
+      res = await fetch(url, { ...options, headers });
+    } catch (err) {
+      toast.error('No se pudo conectar con el servidor.');
+      return null;
+    }
     
     if (res.status === 401 || res.status === 403) {
       localStorage.removeItem(`tenant_token_${slug}`);
       navigate(`/organizer/${slug}/login`);
       return null;
     }
+
+    if (!res.ok) {
+      try {
+        const data = await res.json();
+        toast.error(data.error || 'Error al cargar información del dashboard.');
+      } catch {
+        toast.error('Error al cargar información del dashboard.');
+      }
+      return null;
+    }
+
     return res;
   };
 
@@ -99,22 +139,86 @@ export default function OrganizerDashboard() {
 
   const fetchEquipos = async () => {
     const res = await fetchWithAuth(`${API_URL}/api/organizer/${slug}/equipos`);
-    if (res) setEquipos(await res.json());
+    if (res) {
+      const data = await res.json();
+      setEquipos(Array.isArray(data) ? data : []);
+    }
   };
 
   const fetchPartidos = async () => {
     const res = await fetchWithAuth(`${API_URL}/api/organizer/${slug}/calendario`);
-    if (res) setPartidos(await res.json());
+    if (res) {
+      const data = await res.json();
+      setPartidos(Array.isArray(data) ? data : []);
+    }
   };
 
   const fetchTorneos = async () => {
     const res = await fetchWithAuth(`${API_URL}/api/organizer/${slug}/torneos`);
-    if (res) setTorneos(await res.json());
+    if (res) {
+      const data = await res.json();
+      const torneosList = Array.isArray(data) ? data : [];
+      setTorneos(torneosList);
+      const draft = {};
+      torneosList.forEach((t) => {
+        draft[t.id] = {
+          mantenimiento_cancha: t.cobros?.mantenimiento_cancha ?? 0,
+          arbitraje: t.cobros?.arbitraje ?? 0,
+          inscripcion_equipo: t.cobros?.inscripcion_equipo ?? 0,
+          costo_por_jugador: t.cobros?.costo_por_jugador ?? 0
+        };
+      });
+      setEnrollmentConfigDraft(draft);
+
+      const enrollmentMap = {};
+      await Promise.all(
+        torneosList.map(async (t) => {
+          const enrollmentRes = await fetchWithAuth(`${API_URL}/api/organizer/${slug}/torneos/${t.id}/inscripciones`);
+          if (enrollmentRes) {
+            const enrollmentData = await enrollmentRes.json();
+            enrollmentMap[t.id] = Array.isArray(enrollmentData.inscripciones) ? enrollmentData.inscripciones : [];
+          } else {
+            enrollmentMap[t.id] = [];
+          }
+        })
+      );
+      setEnrollmentsByTorneo(enrollmentMap);
+    }
+  };
+
+  const handleSaveEnrollmentConfig = async (torneoId) => {
+    const payload = enrollmentConfigDraft[torneoId] || {};
+    try {
+      const res = await fetchWithAuth(`${API_URL}/api/organizer/${slug}/torneos/${torneoId}/inscripcion-config`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload)
+      });
+      if (res) {
+        toast.success('Cobros de inscripción actualizados.');
+        fetchTorneos();
+      }
+    } catch {
+      toast.error('No se pudieron actualizar los cobros.');
+    }
+  };
+
+  const handleCopyEnrollmentLink = async (torneoId) => {
+    const link = `${window.location.origin}/inscripcion/${slug}/${torneoId}`;
+    try {
+      await navigator.clipboard.writeText(link);
+      toast.success('Liga de inscripción copiada.');
+    } catch {
+      toast.error('No se pudo copiar la liga.');
+    }
   };
 
   const fetchArbitros = async () => {
     const res = await fetchWithAuth(`${API_URL}/api/organizer/${slug}/arbitros`);
-    if (res) setArbitros(await res.json());
+    if (res) {
+      const data = await res.json();
+      setArbitros(Array.isArray(data) ? data : []);
+    }
   };
 
   const handleFileChange = (e) => {
@@ -147,7 +251,7 @@ export default function OrganizerDashboard() {
       });
       if (res.ok) { 
           toast.success("Torneo Creado"); 
-          setTorneoForm({ nombre: '', formato: 'Liga (Todos contra todos)', fecha_inicio: '', fecha_fin: '', estatus: 'En Registro', premio: '' }); 
+          setTorneoForm({ nombre: '', categoria: '', formato: 'Liga (Todos contra todos)', fecha_inicio: '', fecha_fin: '', estatus: 'En Registro', premio: '' }); 
           fetchTorneos(); 
       }
     } catch (err) {}
@@ -298,8 +402,10 @@ export default function OrganizerDashboard() {
   if (!tenantData) return <div style={{ color: 'white', padding: '2rem' }}>Cargando portal seguro...</div>;
 
   // Filtrado de Jornadas
-  const jornadasReales = [...new Set(partidos.map(p => p.jornada))].sort((a,b)=>a-b);
-  const partidosFiltrados = jornadaActiva === 'Todas' ? partidos : partidos.filter(p => p.jornada.toString() === jornadaActiva.toString());
+  const partidosSafe = Array.isArray(partidos) ? partidos : [];
+  const jornadasReales = [...new Set(partidosSafe.map(p => p.jornada))].sort((a,b)=>a-b);
+  const partidosFiltrados = jornadaActiva === 'Todas' ? partidosSafe : partidosSafe.filter(p => p.jornada.toString() === jornadaActiva.toString());
+  const hasAnyContent = equipos.length > 0 || torneos.length > 0 || partidosSafe.length > 0 || arbitros.length > 0;
 
   return (
     <div className="main-content" style={{ animation: 'fadeIn 0.5s ease-out' }}>
@@ -309,6 +415,9 @@ export default function OrganizerDashboard() {
                  🛡️ Panel de Organizador (Cliente)
             </span>
             <h2 style={{ margin: 0 }}>Comité Organizador: {tenantData.nombre_liga}</h2>
+            <p style={{ color: '#cbd5e1', margin: 0, fontSize: '0.95rem' }}>
+              Integrantes del comité: <strong>{tenantData.dueno_nombre || 'No registrado'}</strong>
+            </p>
             <p style={{ color: 'var(--text-muted)', margin: 0, fontSize: '0.9rem'}}>Arquitectura SaaS Aislada Múlti-Inquilino.</p>
           </div>
           
@@ -316,6 +425,61 @@ export default function OrganizerDashboard() {
               🚪 Cerrar Sesión
           </button>
        </div>
+
+       <div className="glass-panel" style={{ padding: '1.3rem 1.5rem', marginBottom: '1.4rem', border: '1px solid rgba(59,130,246,0.25)', background: 'linear-gradient(90deg, rgba(30,58,138,0.25), rgba(17,24,39,0.35))' }}>
+          <h3 style={{ margin: 0, fontSize: '1.1rem' }}>
+            Bienvenido, {tenantData.dueno_nombre || 'Organizador'} 👋
+          </h3>
+          <p style={{ margin: '0.45rem 0 0 0', color: '#cbd5e1', fontSize: '0.92rem' }}>
+            Este es tu centro de control para crear equipos, registrar torneos, generar calendario y administrar árbitros.
+          </p>
+          <div style={{ marginTop: '0.9rem', display: 'flex', flexWrap: 'wrap', alignItems: 'center', gap: '0.7rem' }}>
+            <span style={{ color: '#e2e8f0', fontSize: '0.9rem' }}>¿Deseas asignar o crear un torneo ahora?</span>
+            <button
+              type="button"
+              onClick={() => setActiveSegment('CALENDARIO')}
+              style={{
+                background: 'linear-gradient(90deg, #8b5cf6, #6366f1)',
+                color: '#fff',
+                border: 'none',
+                borderRadius: '8px',
+                padding: '0.45rem 0.85rem',
+                fontWeight: 'bold',
+                cursor: 'pointer',
+                fontSize: '0.85rem'
+              }}
+            >
+              Ir a Torneos
+            </button>
+          </div>
+       </div>
+
+       {!hasAnyContent && (
+         <div className="glass-panel" style={{ padding: '1.4rem 1.6rem', marginBottom: '1.6rem', border: '1px dashed rgba(148,163,184,0.4)', background: 'rgba(15,23,42,0.45)' }}>
+           <h4 style={{ marginTop: 0, marginBottom: '0.75rem', color: '#f8fafc' }}>Aún no tienes nada creado</h4>
+           <p style={{ margin: '0 0 0.9rem 0', color: '#94a3b8', fontSize: '0.9rem' }}>
+             Sigue este orden recomendado para iniciar tu liga:
+           </p>
+           <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))', gap: '0.8rem' }}>
+             <div style={{ border: '1px solid rgba(255,255,255,0.08)', borderRadius: '10px', padding: '0.75rem' }}>
+               <strong style={{ fontSize: '0.92rem' }}>1) Crea tus equipos</strong>
+               <p style={{ margin: '0.35rem 0 0 0', color: '#9ca3af', fontSize: '0.84rem' }}>Ve a la pestaña EQUIPOS y registra tus franquicias.</p>
+             </div>
+             <div style={{ border: '1px solid rgba(255,255,255,0.08)', borderRadius: '10px', padding: '0.75rem' }}>
+               <strong style={{ fontSize: '0.92rem' }}>2) Registra un torneo</strong>
+               <p style={{ margin: '0.35rem 0 0 0', color: '#9ca3af', fontSize: '0.84rem' }}>En TORNEOS & CALENDARIO define nombre, formato y fechas.</p>
+             </div>
+             <div style={{ border: '1px solid rgba(255,255,255,0.08)', borderRadius: '10px', padding: '0.75rem' }}>
+               <strong style={{ fontSize: '0.92rem' }}>3) Genera el calendario</strong>
+               <p style={{ margin: '0.35rem 0 0 0', color: '#9ca3af', fontSize: '0.84rem' }}>Usa Round Robin y luego programa sedes y horarios.</p>
+             </div>
+             <div style={{ border: '1px solid rgba(255,255,255,0.08)', borderRadius: '10px', padding: '0.75rem' }}>
+               <strong style={{ fontSize: '0.92rem' }}>4) Administra árbitros</strong>
+               <p style={{ margin: '0.35rem 0 0 0', color: '#9ca3af', fontSize: '0.84rem' }}>Carga tu comisión arbitral para operación completa.</p>
+             </div>
+           </div>
+         </div>
+       )}
 
        {/* Tab Navigation */}
        <div style={{ display: 'flex', gap: '1rem', marginBottom: '2rem', background: 'rgba(255,255,255,0.03)', padding: '0.5rem', borderRadius: '15px', border: '1px solid rgba(255,255,255,0.05)', width: 'fit-content' }}>
@@ -396,6 +560,21 @@ export default function OrganizerDashboard() {
                         />
                     </div>
 
+                    <div>
+                        <label style={{ fontSize: '0.85rem', color: '#9ca3af', marginBottom: '0.5rem', display: 'block' }}>Categoría del Torneo *</label>
+                        <select
+                          required
+                          value={torneoForm.categoria}
+                          onChange={e => setTorneoForm({ ...torneoForm, categoria: e.target.value })}
+                          style={{ width: '100%', padding: '0.8rem', background: 'rgba(0,0,0,0.3)', border: '1px solid rgba(255,255,255,0.1)', color: '#fff', borderRadius: '8px', outline: 'none' }}
+                        >
+                          <option value="">Selecciona una categoría</option>
+                          {FOOTBALL_CATEGORIES.map((cat) => (
+                            <option key={cat} value={cat}>{cat}</option>
+                          ))}
+                        </select>
+                    </div>
+
                     <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '1.5rem' }}>
                         <div>
                             <label style={{ fontSize: '0.85rem', color: '#9ca3af', marginBottom: '0.5rem', display: 'block' }}>Configuración del Formato</label>
@@ -455,8 +634,109 @@ export default function OrganizerDashboard() {
                             
                             <div style={{ marginTop: '1rem', display: 'flex', flexDirection: 'column', gap: '0.5rem', fontSize: '0.85rem', color: '#9ca3af' }}>
                                 <div><span style={{ color: '#d1d5db' }}>Formato:</span> {t.formato || 'No especificado'}</div>
+                                <div><span style={{ color: '#d1d5db' }}>Categoría:</span> {t.categoria || 'No especificada'}</div>
                                 <div><span style={{ color: '#d1d5db' }}>Vigencia:</span> {t.fecha_inicio ? new Date(t.fecha_inicio).toLocaleDateString() : 'TBD'} - {t.fecha_fin ? new Date(t.fecha_fin).toLocaleDateString() : 'TBD'}</div>
                                 {t.premio && <div style={{ marginTop: '0.5rem', color: '#facc15', fontWeight: 'bold' }}>🎓 Premio Disp: {t.premio}</div>}
+                            </div>
+                            <div style={{ marginTop: '1rem', borderTop: '1px solid rgba(255,255,255,0.08)', paddingTop: '0.9rem' }}>
+                              <strong style={{ fontSize: '0.86rem', color: '#c4b5fd' }}>Cobros para inscripción de representantes</strong>
+                              <p style={{ margin: '0.45rem 0 0.7rem 0', color: '#94a3b8', fontSize: '0.8rem', lineHeight: 1.4 }}>
+                                Este apartado define lo que pagará cada equipo representante al inscribirse en este torneo.
+                                Se calcula así: <strong>Total = (Mantenimiento + Arbitraje + Inscripción + Costo por jugador) × número de jugadores</strong>.
+                              </p>
+                              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '0.6rem', marginTop: '0.6rem' }}>
+                                <div>
+                                  <label style={{ display: 'block', fontSize: '0.75rem', color: '#a5b4fc', marginBottom: '0.3rem' }}>Mantenimiento de canchas (por jugador)</label>
+                                  <input
+                                    type="number"
+                                    min="0"
+                                    value={enrollmentConfigDraft[t.id]?.mantenimiento_cancha ?? 0}
+                                    onChange={(e) => setEnrollmentConfigDraft({
+                                      ...enrollmentConfigDraft,
+                                      [t.id]: { ...(enrollmentConfigDraft[t.id] || {}), mantenimiento_cancha: e.target.value }
+                                    })}
+                                    placeholder="Ej: 350"
+                                    style={{ width: '100%', padding: '0.55rem', borderRadius: '8px', background: 'rgba(0,0,0,0.3)', border: '1px solid rgba(255,255,255,0.1)', color: '#fff' }}
+                                  />
+                                </div>
+                                <div>
+                                  <label style={{ display: 'block', fontSize: '0.75rem', color: '#a5b4fc', marginBottom: '0.3rem' }}>Arbitraje (por jugador)</label>
+                                  <input
+                                    type="number"
+                                    min="0"
+                                    value={enrollmentConfigDraft[t.id]?.arbitraje ?? 0}
+                                    onChange={(e) => setEnrollmentConfigDraft({
+                                      ...enrollmentConfigDraft,
+                                      [t.id]: { ...(enrollmentConfigDraft[t.id] || {}), arbitraje: e.target.value }
+                                    })}
+                                    placeholder="Ej: 500"
+                                    style={{ width: '100%', padding: '0.55rem', borderRadius: '8px', background: 'rgba(0,0,0,0.3)', border: '1px solid rgba(255,255,255,0.1)', color: '#fff' }}
+                                  />
+                                </div>
+                                <div>
+                                  <label style={{ display: 'block', fontSize: '0.75rem', color: '#a5b4fc', marginBottom: '0.3rem' }}>Inscripción (por jugador)</label>
+                                  <input
+                                    type="number"
+                                    min="0"
+                                    value={enrollmentConfigDraft[t.id]?.inscripcion_equipo ?? 0}
+                                    onChange={(e) => setEnrollmentConfigDraft({
+                                      ...enrollmentConfigDraft,
+                                      [t.id]: { ...(enrollmentConfigDraft[t.id] || {}), inscripcion_equipo: e.target.value }
+                                    })}
+                                    placeholder="Ej: 1200"
+                                    style={{ width: '100%', padding: '0.55rem', borderRadius: '8px', background: 'rgba(0,0,0,0.3)', border: '1px solid rgba(255,255,255,0.1)', color: '#fff' }}
+                                  />
+                                </div>
+                                <div>
+                                  <label style={{ display: 'block', fontSize: '0.75rem', color: '#a5b4fc', marginBottom: '0.3rem' }}>Costo extra por jugador</label>
+                                  <input
+                                    type="number"
+                                    min="0"
+                                    value={enrollmentConfigDraft[t.id]?.costo_por_jugador ?? 0}
+                                    onChange={(e) => setEnrollmentConfigDraft({
+                                      ...enrollmentConfigDraft,
+                                      [t.id]: { ...(enrollmentConfigDraft[t.id] || {}), costo_por_jugador: e.target.value }
+                                    })}
+                                    placeholder="Ej: 80"
+                                    style={{ width: '100%', padding: '0.55rem', borderRadius: '8px', background: 'rgba(0,0,0,0.3)', border: '1px solid rgba(255,255,255,0.1)', color: '#fff' }}
+                                  />
+                                </div>
+                              </div>
+                              <p style={{ margin: '0.65rem 0 0 0', fontSize: '0.78rem', color: '#94a3b8' }}>
+                                La liga de inscripción abre un formulario para que el representante cree su usuario, elija este torneo y reciba el total a pagar.
+                              </p>
+                              <div style={{ display: 'flex', gap: '0.6rem', marginTop: '0.8rem' }}>
+                                <button type="button" onClick={() => handleSaveEnrollmentConfig(t.id)} className="btn btn-sm" style={{ background: '#4f46e5', color: '#fff' }}>
+                                  Guardar cobros
+                                </button>
+                                <button type="button" onClick={() => handleCopyEnrollmentLink(t.id)} className="btn btn-sm" style={{ background: 'rgba(255,255,255,0.08)', color: '#e2e8f0', border: '1px solid rgba(255,255,255,0.15)' }}>
+                                  Copiar liga de inscripción
+                                </button>
+                              </div>
+                              <div style={{ marginTop: '0.9rem', borderTop: '1px solid rgba(255,255,255,0.08)', paddingTop: '0.8rem' }}>
+                                <strong style={{ fontSize: '0.84rem', color: '#93c5fd' }}>
+                                  Equipos inscritos ({(enrollmentsByTorneo[t.id] || []).length})
+                                </strong>
+                                {(enrollmentsByTorneo[t.id] || []).length === 0 ? (
+                                  <p style={{ margin: '0.45rem 0 0 0', color: '#94a3b8', fontSize: '0.8rem' }}>
+                                    Aún no hay inscripciones de equipos para este torneo.
+                                  </p>
+                                ) : (
+                                  <div style={{ marginTop: '0.45rem', display: 'grid', gap: '0.45rem' }}>
+                                    {(enrollmentsByTorneo[t.id] || []).map((ins) => (
+                                      <div key={ins.id} style={{ border: '1px solid rgba(255,255,255,0.08)', borderRadius: '8px', padding: '0.55rem 0.7rem', background: 'rgba(255,255,255,0.02)' }}>
+                                        <div style={{ display: 'flex', justifyContent: 'space-between', gap: '0.8rem', flexWrap: 'wrap' }}>
+                                          <strong style={{ color: '#e2e8f0', fontSize: '0.82rem' }}>{ins.nombre_equipo}</strong>
+                                          <span style={{ color: '#fbbf24', fontWeight: 'bold', fontSize: '0.8rem' }}>${Number(ins.total_cobro || 0).toFixed(2)}</span>
+                                        </div>
+                                        <div style={{ marginTop: '0.2rem', color: '#9ca3af', fontSize: '0.76rem' }}>
+                                          Representante: {ins.representante?.nombre_representante || 'N/D'} · Jugadores: {(ins.jugadores || []).length}
+                                        </div>
+                                      </div>
+                                    ))}
+                                  </div>
+                                )}
+                              </div>
                             </div>
                         </div>
                     )})}

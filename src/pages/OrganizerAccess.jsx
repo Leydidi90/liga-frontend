@@ -58,10 +58,30 @@ const normalizeLegacySlug = (value) => String(value || '')
   .replace(/-+/g, '-')
   .replace(/^-|-$/g, '');
 
+const getPasswordChecks = (password) => {
+  const value = String(password || '');
+  return {
+    minLength: value.length >= 8,
+    upper: /[A-Z]/.test(value),
+    lower: /[a-z]/.test(value),
+    number: /\d/.test(value),
+    special: /[^A-Za-z0-9]/.test(value)
+  };
+};
+
+const getPasswordStrength = (password) => {
+  const checks = getPasswordChecks(password);
+  const score = Object.values(checks).filter(Boolean).length;
+  if (score <= 2) return { label: 'Debil', color: '#ef4444', score };
+  if (score <= 4) return { label: 'Media', color: '#f59e0b', score };
+  return { label: 'Fuerte', color: '#10b981', score };
+};
+
 export default function OrganizerAccess() {
   const navigate = useNavigate();
   const [mode, setMode] = useState('login');
   const [slug, setSlug] = useState('');
+  const [slugEditedManually, setSlugEditedManually] = useState(false);
   const [isRegistering, setIsRegistering] = useState(false);
   const [isPaying, setIsPaying] = useState(false);
   const [simTxRef, setSimTxRef] = useState('');
@@ -75,12 +95,22 @@ export default function OrganizerAccess() {
     nombre_liga: '',
     subdominio_o_slug: '',
     plan: 'Bronce',
+    billingCycle: 'monthly',
     dueno_nombre: '',
     dueno_email: '',
     password: ''
   });
+  const [confirmPassword, setConfirmPassword] = useState('');
   const [paymentContext, setPaymentContext] = useState(null);
+  const [showPasswordExamples, setShowPasswordExamples] = useState(false);
   const selectedPlanInfo = PLAN_INFO[newTenant.plan];
+  const passwordChecks = getPasswordChecks(newTenant.password);
+  const passwordStrength = getPasswordStrength(newTenant.password);
+  const isPasswordPolicyValid = Object.values(passwordChecks).every(Boolean);
+  const isConfirmPasswordValid = newTenant.password && confirmPassword && newTenant.password === confirmPassword;
+  const billingLabel = newTenant.billingCycle === 'yearly' ? 'año' : 'mes';
+  const billingMultiplier = newTenant.billingCycle === 'yearly' ? 12 : 1;
+  const computedPrice = selectedPlanInfo.precio * billingMultiplier;
   const modeIndex = mode === 'login' ? 1 : mode === 'register' ? 2 : 3;
 
   const handleOrganizerAccess = async (e) => {
@@ -134,6 +164,14 @@ export default function OrganizerAccess() {
       toast.error('El slug/subdominio debe tener al menos 3 caracteres validos.');
       return;
     }
+    if (!isPasswordPolicyValid) {
+      toast.error('La contraseña no cumple el formato requerido.');
+      return;
+    }
+    if (!isConfirmPasswordValid) {
+      toast.error('La confirmación de contraseña no coincide.');
+      return;
+    }
 
     setIsRegistering(true);
     try {
@@ -153,6 +191,7 @@ export default function OrganizerAccess() {
         slug: data.subdominio_o_slug,
         nombre_liga: data.nombre_liga,
         plan: data.plan,
+        billingCycle: newTenant.billingCycle,
         password: newTenant.password
       });
       setPaymentForm({
@@ -201,7 +240,11 @@ export default function OrganizerAccess() {
       const payRes = await fetch(`${API_URL}/api/public/organizer/${paymentContext.tenantId}/first-payment`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ password: paymentContext.password, slug: paymentContext.slug })
+        body: JSON.stringify({
+          password: paymentContext.password,
+          slug: paymentContext.slug,
+          billingCycle: paymentContext.billingCycle || 'monthly'
+        })
       });
       const payData = await payRes.json();
       if (!payRes.ok) throw new Error(payData.error || 'No se pudo confirmar el pago');
@@ -252,7 +295,7 @@ export default function OrganizerAccess() {
             </div>
             <div className="promo-plan-highlight">
               <div className="promo-plan-glow" />
-              <p className="promo-plan-name">{newTenant.plan} · ${selectedPlanInfo.precio}/mes</p>
+              <p className="promo-plan-name">{newTenant.plan} · ${computedPrice}/{billingLabel}</p>
               <p className="promo-plan-desc">{selectedPlanInfo.descripcion}</p>
               <div className="promo-metric-grid">
                 <div className="promo-metric-item">
@@ -332,15 +375,56 @@ export default function OrganizerAccess() {
                 <div className="organizer-field-grid two">
                   <div>
                     <label className="organizer-label stagger-item" style={{ '--stagger-delay': '60ms' }}>Nombre de la liga</label>
-                    <input required value={newTenant.nombre_liga} onChange={e => setNewTenant({ ...newTenant, nombre_liga: e.target.value })} className="organizer-input stagger-item" style={{ '--stagger-delay': '90ms' }} />
+                    <input
+                      required
+                      value={newTenant.nombre_liga}
+                      onChange={e => {
+                        const nombreLiga = e.target.value;
+                        const autoSlug = normalizeSlug(nombreLiga);
+                        setNewTenant(prev => ({
+                          ...prev,
+                          nombre_liga: nombreLiga,
+                          subdominio_o_slug: slugEditedManually ? prev.subdominio_o_slug : autoSlug
+                        }));
+                      }}
+                      className="organizer-input stagger-item"
+                      style={{ '--stagger-delay': '90ms' }}
+                    />
                   </div>
                   <div>
                     <label className="organizer-label stagger-item" style={{ '--stagger-delay': '120ms' }}>Slug / subdominio</label>
-                    <input required value={newTenant.subdominio_o_slug} onChange={e => setNewTenant({ ...newTenant, subdominio_o_slug: e.target.value.toLowerCase() })} className="organizer-input stagger-item" style={{ '--stagger-delay': '150ms' }} />
+                    <input
+                      required
+                      value={newTenant.subdominio_o_slug}
+                      onChange={e => {
+                        const manualSlug = normalizeSlug(e.target.value);
+                        setSlugEditedManually(true);
+                        setNewTenant({ ...newTenant, subdominio_o_slug: manualSlug });
+                      }}
+                      className="organizer-input stagger-item"
+                      style={{ '--stagger-delay': '150ms' }}
+                    />
                     <small className="organizer-input-help stagger-item" style={{ '--stagger-delay': '165ms' }}>
                       Si pones <code>cerdos.com</code>, se guarda como <code>cerdos</code>.
                     </small>
                   </div>
+                </div>
+
+                <div className="organizer-tab-row" style={{ marginBottom: '1.2rem' }}>
+                  <button
+                    type="button"
+                    onClick={() => setNewTenant({ ...newTenant, billingCycle: 'monthly' })}
+                    className={`organizer-tab ${newTenant.billingCycle === 'monthly' ? 'active' : ''}`}
+                  >
+                    Mensual
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setNewTenant({ ...newTenant, billingCycle: 'yearly' })}
+                    className={`organizer-tab ${newTenant.billingCycle === 'yearly' ? 'active alt' : ''}`}
+                  >
+                    Anual
+                  </button>
                 </div>
 
                 <div className="plans-grid">
@@ -353,7 +437,7 @@ export default function OrganizerAccess() {
                       style={{ '--stagger-delay': `${180 + idx * 60}ms` }}
                     >
                       <div className="plan-fx-head">
-                        <strong>{plan} (${info.precio}/mes)</strong>
+                        <strong>{plan} (${newTenant.billingCycle === 'yearly' ? info.precio * 12 : info.precio}/{newTenant.billingCycle === 'yearly' ? 'año' : 'mes'})</strong>
                         <span className="plan-fx-tag">{PLAN_THEME[plan].tag}</span>
                       </div>
                       <p className="plan-fx-desc">{info.descripcion}</p>
@@ -367,16 +451,79 @@ export default function OrganizerAccess() {
                 <div className="selected-plan-banner stagger-item" style={{ '--stagger-delay': '360ms' }}>
                   <span className="selected-plan-banner-tag">Plan elegido</span>
                   <strong>{newTenant.plan}</strong>
-                  <span>${selectedPlanInfo.precio}/mes · {selectedPlanInfo.maxEquipos} · {selectedPlanInfo.soporte}</span>
+                  <span>${computedPrice}/{billingLabel} · {selectedPlanInfo.maxEquipos} · {selectedPlanInfo.soporte}</span>
                 </div>
 
                 <div className="organizer-field-grid three">
                   <input required placeholder="Nombre organizador" value={newTenant.dueno_nombre} onChange={e => setNewTenant({ ...newTenant, dueno_nombre: e.target.value })} className="organizer-input stagger-item" style={{ '--stagger-delay': '420ms' }} />
                   <input required type="email" placeholder="Correo organizador" value={newTenant.dueno_email} onChange={e => setNewTenant({ ...newTenant, dueno_email: e.target.value })} className="organizer-input stagger-item" style={{ '--stagger-delay': '460ms' }} />
-                  <input required type="password" placeholder="Contrasena de acceso" value={newTenant.password} onChange={e => setNewTenant({ ...newTenant, password: e.target.value })} className="organizer-input stagger-item" style={{ '--stagger-delay': '500ms' }} />
+                  <div style={{ display: 'flex', gap: '0.5rem', alignItems: 'center' }}>
+                    <input
+                      required
+                      type="password"
+                      placeholder="Contrasena de acceso"
+                      value={newTenant.password}
+                      onChange={e => setNewTenant({ ...newTenant, password: e.target.value })}
+                      className="organizer-input stagger-item"
+                      style={{ '--stagger-delay': '500ms', flex: 1 }}
+                      minLength={8}
+                      pattern="^(?=.*[a-z])(?=.*[A-Z])(?=.*\d)(?=.*[^A-Za-z0-9]).{8,}$"
+                      title="Debe incluir mínimo 8 caracteres, mayúscula, minúscula, número y símbolo."
+                    />
+                    <button
+                      type="button"
+                      onClick={() => setShowPasswordExamples((prev) => !prev)}
+                      title="Ver ejemplos de contraseñas seguras"
+                      style={{
+                        width: '36px',
+                        height: '36px',
+                        borderRadius: '50%',
+                        border: '1px solid rgba(255,255,255,0.2)',
+                        background: 'rgba(255,255,255,0.08)',
+                        color: '#fff',
+                        fontWeight: 'bold',
+                        cursor: 'pointer'
+                      }}
+                    >
+                      ?
+                    </button>
+                  </div>
                 </div>
+                {showPasswordExamples && (
+                  <div className="stagger-item" style={{ '--stagger-delay': '510ms', marginTop: '0.4rem', padding: '0.8rem 1rem', borderRadius: '10px', border: '1px solid rgba(255,255,255,0.12)', background: 'rgba(255,255,255,0.03)' }}>
+                    <strong style={{ display: 'block', marginBottom: '0.5rem', color: '#c4b5fd' }}>Ejemplos válidos:</strong>
+                    <div style={{ fontSize: '0.85rem', color: '#d1d5db', lineHeight: '1.5' }}>
+                      <code>Liga2026#Mx</code> · <code>Futbol!Pro9</code> · <code>Comite@Seg1</code>
+                    </div>
+                  </div>
+                )}
+                <div className="organizer-field-grid three" style={{ marginTop: '0.7rem' }}>
+                  <input
+                    required
+                    type="password"
+                    placeholder="Confirmar contrasena"
+                    value={confirmPassword}
+                    onChange={e => setConfirmPassword(e.target.value)}
+                    className="organizer-input stagger-item"
+                    style={{ '--stagger-delay': '520ms' }}
+                  />
+                  <div className="stagger-item" style={{ '--stagger-delay': '530ms', color: passwordStrength.color, alignSelf: 'center', fontWeight: 'bold' }}>
+                    Fortaleza: {passwordStrength.label}
+                  </div>
+                  <div className="stagger-item" style={{ '--stagger-delay': '540ms', alignSelf: 'center', fontSize: '0.85rem', color: confirmPassword && confirmPassword === newTenant.password ? '#10b981' : '#9ca3af' }}>
+                    {confirmPassword ? (confirmPassword === newTenant.password ? 'Confirmacion correcta' : 'No coincide') : 'Confirma tu contraseña'}
+                  </div>
+                </div>
+                <small className="organizer-input-help stagger-item" style={{ '--stagger-delay': '550ms', display: 'block', marginTop: '0.4rem' }}>
+                  Requisitos: 8+ caracteres, mayuscula, minuscula, numero y caracter especial.
+                </small>
 
-                <button type="submit" disabled={isRegistering} className="organizer-main-btn register stagger-item" style={{ '--stagger-delay': '560ms' }}>
+                <button
+                  type="submit"
+                  disabled={isRegistering || !isPasswordPolicyValid || !isConfirmPasswordValid}
+                  className="organizer-main-btn register stagger-item"
+                  style={{ '--stagger-delay': '560ms' }}
+                >
                   {isRegistering ? 'Registrando...' : 'Registrar liga y continuar a pago'}
                 </button>
               </form>
@@ -387,7 +534,12 @@ export default function OrganizerAccess() {
                 <div className="payment-fx-card">
                   <p style={{ margin: 0 }}><strong>Liga:</strong> {paymentContext.nombre_liga}</p>
                   <p style={{ margin: '0.35rem 0' }}><strong>Plan:</strong> {paymentContext.plan}</p>
-                  <p className="payment-total"><strong>Total:</strong> ${PLAN_INFO[paymentContext.plan].precio}.00 MXN</p>
+                  <p style={{ margin: '0.35rem 0' }}>
+                    <strong>Ciclo:</strong> {paymentContext.billingCycle === 'yearly' ? 'Anual' : 'Mensual'}
+                  </p>
+                  <p className="payment-total">
+                    <strong>Total:</strong> ${(PLAN_INFO[paymentContext.plan].precio * (paymentContext.billingCycle === 'yearly' ? 12 : 1)).toFixed(2)} MXN
+                  </p>
                 <p style={{ margin: '0.35rem 0 0 0', color: '#93c5fd', fontSize: '0.8rem' }}>
                   <strong>Referencia:</strong> {simTxRef || 'SIM-PENDIENTE'}
                 </p>

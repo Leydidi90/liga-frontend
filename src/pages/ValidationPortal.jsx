@@ -4,19 +4,57 @@ import API_URL from '../api';
 
 export default function ValidationPortal() {
   const [ligas, setLigas] = useState([]);
+  const [torneosPorLiga, setTorneosPorLiga] = useState({});
   const [loading, setLoading] = useState(true);
   const navigate = useNavigate();
+  const getTournamentStatusLabel = (slug) => {
+    const stats = torneosPorLiga[slug];
+    if (!stats || stats.total === 0) return { text: 'Torneo: Sin registrar', color: '#9ca3af', border: 'rgba(156,163,175,0.35)', bg: 'rgba(156,163,175,0.12)' };
+    if (stats.abiertos > 0) return { text: 'Torneo: Abierto', color: '#34d399', border: 'rgba(52,211,153,0.35)', bg: 'rgba(16,185,129,0.12)' };
+    if (stats.porIniciar > 0) return { text: 'Torneo: Por iniciar', color: '#fbbf24', border: 'rgba(251,191,36,0.35)', bg: 'rgba(251,191,36,0.12)' };
+    return { text: 'Torneo: Cerrado', color: '#f87171', border: 'rgba(248,113,113,0.35)', bg: 'rgba(239,68,68,0.12)' };
+  };
 
   useEffect(() => {
-    fetch(`${API_URL}/api/public/ligas`)
-       .then(res => res.json())
-       .then(data => {
-           if(Array.isArray(data)) {
-               setLigas(data);
-           }
-           setLoading(false);
-       })
-       .catch(() => setLoading(false));
+    const fetchLigasConTorneos = async () => {
+      try {
+        const res = await fetch(`${API_URL}/api/public/ligas`);
+        const data = await res.json();
+        const ligasData = Array.isArray(data) ? data : [];
+        setLigas(ligasData);
+
+        const statuses = {};
+        await Promise.all(
+          ligasData.map(async (liga) => {
+            try {
+              const torneosRes = await fetch(`${API_URL}/api/organizer/${liga.subdominio_o_slug}/torneos`);
+              const torneosData = await torneosRes.json();
+              const torneos = Array.isArray(torneosData) ? torneosData : [];
+
+              let abiertos = 0;
+              let cerrados = 0;
+              let porIniciar = 0;
+              torneos.forEach((t) => {
+                const estatus = String(t.estatus || '').toLowerCase();
+                if (estatus === 'activo') abiertos += 1;
+                else if (estatus === 'en registro') porIniciar += 1;
+                else if (estatus === 'finalizado' || estatus === 'pausado') cerrados += 1;
+              });
+              statuses[liga.subdominio_o_slug] = { abiertos, cerrados, porIniciar, total: torneos.length };
+            } catch {
+              statuses[liga.subdominio_o_slug] = { abiertos: 0, cerrados: 0, porIniciar: 0, total: 0 };
+            }
+          })
+        );
+        setTorneosPorLiga(statuses);
+      } catch {
+        // ignored on purpose
+      } finally {
+        setLoading(false);
+      }
+    };
+
+    fetchLigasConTorneos();
   }, []);
 
   return (
@@ -42,7 +80,7 @@ export default function ValidationPortal() {
           </div>
           <div style={{ display: 'flex', alignItems: 'center', gap: '1.5rem' }}>
               <span style={{ fontSize: '1.1rem', cursor: 'pointer' }}>🔍</span>
-              <button onClick={() => navigate('/organizer/access')} style={{ background: 'rgba(255,255,255,0.1)', color: '#fff', border: '1px solid rgba(255,255,255,0.2)', padding: '0.5rem 1rem', borderRadius: '4px', cursor: 'pointer', fontSize: '0.85rem', fontWeight: 'bold' }}>Organizador</button>
+              <button onClick={() => navigate('/organizer/access')} style={{ background: 'rgba(255,255,255,0.1)', color: '#fff', border: '1px solid rgba(255,255,255,0.2)', padding: '0.5rem 1rem', borderRadius: '4px', cursor: 'pointer', fontSize: '0.85rem', fontWeight: 'bold' }}>Regístrate o inicia sesión</button>
           </div>
       </nav>
 
@@ -67,12 +105,21 @@ export default function ValidationPortal() {
              <p style={{ fontSize: '1.25rem', color: '#d1d5db', marginBottom: '2.5rem', maxWidth: '550px', lineHeight: '1.4' }}>
                 Bienvenido a <strong>LigaMaster SaaS</strong>. El centro de mando unificado para el fútbol profesional en México. Resultados en tiempo real y estadísticas avanzadas.
              </p>
+             <p style={{ fontSize: '1rem', color: '#9ca3af', marginBottom: '2rem', maxWidth: '600px', lineHeight: '1.5' }}>
+                Aquí puedes administrar tus equipos, pero para hacerlo primero debes registrarte o iniciar sesión como organizador.
+             </p>
              <div style={{ display: 'flex', gap: '1rem' }}>
                  <button 
                     onClick={() => window.scrollTo({ top: window.innerHeight * 0.75, behavior: 'smooth' })}
                     style={{ background: '#fff', color: '#000', padding: '1.1rem 3.5rem', borderRadius: '4px', fontWeight: '900', border: 'none', cursor: 'pointer', fontSize: '1.1rem' }}
                  >
                     EXPLORAR LIGAS
+                 </button>
+                 <button
+                    onClick={() => navigate('/organizer/access')}
+                    style={{ background: '#3b82f6', color: '#fff', padding: '1.1rem 2.5rem', borderRadius: '4px', fontWeight: '900', border: 'none', cursor: 'pointer', fontSize: '1.1rem' }}
+                 >
+                    REGÍSTRATE
                  </button>
              </div>
           </div>
@@ -113,6 +160,16 @@ export default function ValidationPortal() {
                                        <span style={{ width: '8px', height: '8px', background: '#10b981', borderRadius: '50%' }}></span>
                                        <span style={{ fontSize: '0.75rem', color: '#6b7280', fontWeight: 'bold', textTransform: 'uppercase' }}>Liga Activa</span>
                                    </div>
+                                   <div style={{ marginTop: '0.55rem' }}>
+                                     {(() => {
+                                       const status = getTournamentStatusLabel(l.subdominio_o_slug);
+                                       return (
+                                         <span style={{ fontSize: '0.74rem', color: status.color, border: `1px solid ${status.border}`, background: status.bg, borderRadius: '999px', padding: '0.2rem 0.6rem', fontWeight: 'bold' }}>
+                                           {status.text}
+                                         </span>
+                                       );
+                                     })()}
+                                   </div>
                                </div>
                                <div style={{ width: '40px', height: '40px', background: 'rgba(255,255,255,0.05)', borderRadius: '50%', display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#fff' }}>
                                    →
@@ -139,7 +196,7 @@ export default function ValidationPortal() {
               <div style={{ display: 'flex', gap: '5rem' }}>
                   <div style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
                       <span style={{ color: '#fff', fontWeight: 'bold', marginBottom: '0.5rem', fontSize: '0.8rem', textTransform: 'uppercase', letterSpacing: '1px' }}>🏢 Corporativo</span>
-                      <button onClick={() => navigate('/organizer/access')} style={{ background: 'none', border: 'none', color: '#4b5563', textAlign: 'left', cursor: 'pointer', padding: 0, fontSize: '0.95rem' }} className="link-hover">Oficina del Organizador</button>
+                      <button onClick={() => navigate('/organizer/access')} style={{ background: 'none', border: 'none', color: '#4b5563', textAlign: 'left', cursor: 'pointer', padding: 0, fontSize: '0.95rem' }} className="link-hover">Regístrate o inicia sesión</button>
                       <button onClick={() => navigate('/login')} style={{ background: 'none', border: 'none', color: '#4b5563', textAlign: 'left', cursor: 'pointer', padding: 0, fontSize: '0.95rem' }} className="link-hover">SaaS Central Admin</button>
                       <span style={{ color: '#4b5563', fontSize: '0.95rem', cursor: 'pointer' }}>Privacidad</span>
                   </div>

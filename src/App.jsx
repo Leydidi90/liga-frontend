@@ -8,6 +8,7 @@ import OrganizerDashboard from './pages/OrganizerDashboard';
 import OrganizerLogin from './pages/OrganizerLogin';
 import PublicLeague from './pages/PublicLeague';
 import OrganizerAccess from './pages/OrganizerAccess';
+import RepresentativeEnrollment from './pages/RepresentativeEnrollment';
 import { Toaster } from 'react-hot-toast';
 
 // ProtectedRoute Component
@@ -73,6 +74,8 @@ function App() {
         <Route path="/organizer/:slug/login" element={<OrganizerLogin />} />
         <Route path="/organizer/:slug" element={<OrganizerDashboard />} />
         <Route path="/liga/:slug" element={<PublicLeague />} />
+        <Route path="/inscripcion/:slug" element={<RepresentativeEnrollment />} />
+        <Route path="/inscripcion/:slug/:torneoId" element={<RepresentativeEnrollment />} />
       </Routes>
     </Router>
   );
