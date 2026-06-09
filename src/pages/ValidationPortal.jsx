@@ -1,0 +1,233 @@
+import React, { useState, useEffect } from 'react';
+import { useNavigate } from 'react-router-dom';
+import API_URL from '../api';
+
+export default function ValidationPortal() {
+  const [ligas, setLigas] = useState([]);
+  const [torneosPorLiga, setTorneosPorLiga] = useState({});
+  const [loading, setLoading] = useState(true);
+  const navigate = useNavigate();
+  const getTournamentStatusLabel = (slug) => {
+    const stats = torneosPorLiga[slug];
+    if (!stats || stats.total === 0) return { text: 'Torneo: Sin registrar', color: '#9ca3af', border: 'rgba(156,163,175,0.35)', bg: 'rgba(156,163,175,0.12)' };
+    if (stats.abiertos > 0) return { text: 'Torneo: Abierto', color: '#34d399', border: 'rgba(52,211,153,0.35)', bg: 'rgba(16,185,129,0.12)' };
+    if (stats.porIniciar > 0) return { text: 'Torneo: Por iniciar', color: '#fbbf24', border: 'rgba(251,191,36,0.35)', bg: 'rgba(251,191,36,0.12)' };
+    return { text: 'Torneo: Cerrado', color: '#f87171', border: 'rgba(248,113,113,0.35)', bg: 'rgba(239,68,68,0.12)' };
+  };
+
+  useEffect(() => {
+    const fetchLigasConTorneos = async () => {
+      try {
+        const res = await fetch(`${API_URL}/api/public/ligas`);
+        const data = await res.json();
+        const ligasData = Array.isArray(data) ? data : [];
+        setLigas(ligasData);
+
+        const statuses = {};
+        await Promise.all(
+          ligasData.map(async (liga) => {
+            try {
+              const torneosRes = await fetch(`${API_URL}/api/organizer/${liga.subdominio_o_slug}/torneos`);
+              const torneosData = await torneosRes.json();
+              const torneos = Array.isArray(torneosData) ? torneosData : [];
+
+              let abiertos = 0;
+              let cerrados = 0;
+              let porIniciar = 0;
+              torneos.forEach((t) => {
+                const estatus = String(t.estatus || '').toLowerCase();
+                if (estatus === 'activo') abiertos += 1;
+                else if (estatus === 'en registro') porIniciar += 1;
+                else if (estatus === 'finalizado' || estatus === 'pausado') cerrados += 1;
+              });
+              statuses[liga.subdominio_o_slug] = { abiertos, cerrados, porIniciar, total: torneos.length };
+            } catch {
+              statuses[liga.subdominio_o_slug] = { abiertos: 0, cerrados: 0, porIniciar: 0, total: 0 };
+            }
+          })
+        );
+        setTorneosPorLiga(statuses);
+      } catch {
+        // ignored on purpose
+      } finally {
+        setLoading(false);
+      }
+    };
+
+    fetchLigasConTorneos();
+  }, []);
+
+  return (
+    <div style={{ background: '#020202', minHeight: '100vh', color: 'white', fontFamily: "'Inter', sans-serif" }}>
+      
+      {/* 0. Top Navigation Bar (Branding) */}
+      <nav style={{ 
+          position: 'fixed', top: 0, left: 0, width: '100%', 
+          height: '70px', background: 'rgba(2,2,2,0.8)', backdropFilter: 'blur(10px)', 
+          zIndex: 1000, display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+          padding: '0 5%', borderBottom: '1px solid rgba(255,255,255,0.05)'
+      }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '2rem' }}>
+              <div style={{ fontSize: '1.5rem', fontWeight: '900', color: '#fff', letterSpacing: '-1px', display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+                  <span style={{ background: '#3b82f6', padding: '0.2rem 0.6rem', borderRadius: '4px' }}>LM</span>
+                  <span>LigaMaster SaaS</span>
+              </div>
+              <div style={{ display: 'flex', gap: '1.5rem', fontSize: '0.9rem', color: '#9ca3af', fontWeight: '500' }}>
+                  <span onClick={() => window.scrollTo({ top: 0, behavior: 'smooth' })} style={{ color: '#fff', cursor: 'pointer' }}>Inicio</span>
+                  <span onClick={() => { const el = document.getElementById('leagues-section'); if(el) el.scrollIntoView({ behavior: 'smooth' }); }} style={{ cursor: 'pointer' }}>Ligas</span>
+                  <span onClick={() => { const el = document.getElementById('leagues-section'); if(el) el.scrollIntoView({ behavior: 'smooth' }); }} style={{ cursor: 'pointer' }}>Calendario</span>
+              </div>
+          </div>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '1.5rem' }}>
+              <span style={{ fontSize: '1.1rem', cursor: 'pointer' }}>🔍</span>
+              <button onClick={() => navigate('/organizer/access')} style={{ background: 'rgba(255,255,255,0.1)', color: '#fff', border: '1px solid rgba(255,255,255,0.2)', padding: '0.5rem 1rem', borderRadius: '4px', cursor: 'pointer', fontSize: '0.85rem', fontWeight: 'bold' }}>Regístrate o inicia sesión</button>
+          </div>
+      </nav>
+
+      {/* 1. Hero Section (DAZN STYLE) */}
+      <section style={{ 
+          position: 'relative', 
+          height: '80vh', 
+          width: '100%', 
+          backgroundImage: `linear-gradient(to right, rgba(0,0,0,0.8) 0%, rgba(0,0,0,0.4) 50%, rgba(0,0,0,0.1) 100%), linear-gradient(to bottom, rgba(2,2,2,0) 60%, rgba(2,2,2,1) 100%), url('/assets/hero-banner.png')`,
+          backgroundSize: 'cover',
+          backgroundPosition: 'center',
+          display: 'flex',
+          flexDirection: 'column',
+          justifyContent: 'center',
+          padding: '0 5%'
+      }}>
+          <div style={{ maxWidth: '800px', animation: 'fadeIn 1s ease-out', marginTop: '70px' }}>
+             <span style={{ background: '#3b82f6', color: '#fff', padding: '0.3rem 0.8rem', borderRadius: '4px', fontSize: '0.75rem', fontWeight: 'bold', textTransform: 'uppercase', letterSpacing: '2px', marginBottom: '1rem', display: 'inline-block' }}>Exclusivo para Aficionados</span>
+             <h1 style={{ fontSize: '4.5rem', fontWeight: '950', color: '#fff', margin: '0 0 1rem', textTransform: 'uppercase', letterSpacing: '-3px', lineHeight: '0.9' }}>
+                GOLES, <br/>RESÚMENES Y <br/><span style={{ color: '#3b82f6' }}>PASIÓN</span>
+             </h1>
+             <p style={{ fontSize: '1.25rem', color: '#d1d5db', marginBottom: '2.5rem', maxWidth: '550px', lineHeight: '1.4' }}>
+                Bienvenido a <strong>LigaMaster SaaS</strong>. El centro de mando unificado para el fútbol profesional en México. Resultados en tiempo real y estadísticas avanzadas.
+             </p>
+             <p style={{ fontSize: '1rem', color: '#9ca3af', marginBottom: '2rem', maxWidth: '600px', lineHeight: '1.5' }}>
+                Aquí puedes administrar tus equipos, pero para hacerlo primero debes registrarte o iniciar sesión como organizador.
+             </p>
+             <div style={{ display: 'flex', gap: '1rem', flexWrap: 'wrap' }}>
+                 <button 
+                    onClick={() => window.scrollTo({ top: window.innerHeight * 0.75, behavior: 'smooth' })}
+                    style={{ background: '#fff', color: '#000', padding: '1.1rem 3.5rem', borderRadius: '4px', fontWeight: '900', border: 'none', cursor: 'pointer', fontSize: '1.1rem' }}
+                 >
+                    EXPLORAR LIGAS
+                 </button>
+                 <button
+                    onClick={() => navigate('/organizer/access')}
+                    style={{ background: '#3b82f6', color: '#fff', padding: '1.1rem 2.5rem', borderRadius: '4px', fontWeight: '900', border: 'none', cursor: 'pointer', fontSize: '1.1rem' }}
+                 >
+                    REGÍSTRATE
+                 </button>
+                 <button
+                    onClick={() => navigate('/representative/access')}
+                    style={{ background: 'transparent', color: '#fff', padding: '1.1rem 2.2rem', borderRadius: '4px', fontWeight: '900', border: '1px solid rgba(255,255,255,0.45)', cursor: 'pointer', fontSize: '1.05rem' }}
+                 >
+                    INICIAR SESIÓN (REPRESENTANTE)
+                 </button>
+                 <button
+                    onClick={() => navigate('/arbitro/login')}
+                    style={{ background: 'transparent', color: '#7dd3fc', padding: '1.1rem 2.2rem', borderRadius: '4px', fontWeight: '900', border: '1px solid rgba(14,165,233,0.55)', cursor: 'pointer', fontSize: '1.05rem' }}
+                 >
+                    INICIAR SESIÓN (ÁRBITRO)
+                 </button>
+             </div>
+          </div>
+      </section>
+
+      {/* 2. Public Directory (DIRECT ACCESS) */}
+      <main id="leagues-section" style={{ padding: '4rem 5%', position: 'relative', zIndex: 10 }}>
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-end', marginBottom: '2.5rem' }}>
+             <div>
+                 <h2 style={{ fontSize: '2.2rem', margin: 0, fontWeight: '900', textTransform: 'uppercase', letterSpacing: '-1px' }}>🏆 Ligas en Competencia</h2>
+                 <p style={{ color: '#6b7280', marginTop: '0.5rem' }}>Resultados oficiales avalados por el Comité Organizador.</p>
+             </div>
+             <div style={{ display: 'flex', gap: '1rem' }}>
+                 <button style={{ background: '#222', color: '#fff', border: 'none', width: '40px', height: '40px', borderRadius: '50%', cursor: 'pointer' }}>{'<'}</button>
+                 <button style={{ background: '#222', color: '#fff', border: 'none', width: '40px', height: '40px', borderRadius: '50%', cursor: 'pointer' }}>{'>'}</button>
+             </div>
+          </div>
+          
+          {loading ? (
+              <div style={{ textAlign: 'center', padding: '5rem', color: '#6b7280' }}>
+                  <div style={{ width: '40px', height: '40px', border: '4px solid #3b82f6', borderTopColor: 'transparent', borderRadius: '50%', animation: 'spin 1s linear infinite', margin: '0 auto 1.5rem' }}></div>
+                  <p>Sincronizando con los estadios...</p>
+              </div>
+          ) : (
+              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(320px, 1fr))', gap: '2rem' }}>
+                  {ligas.map(l => (
+                      <div 
+                        key={l.id} 
+                        onClick={() => navigate(`/liga/${l.subdominio_o_slug}`)}
+                        className="glass-panel block-hover"
+                        style={{ background: 'rgba(255,255,255,0.02)', padding: '2rem', borderRadius: '12px', border: '1px solid rgba(255,255,255,0.06)', cursor: 'pointer', transition: 'all 0.4s' }}
+                      >
+                          <div style={{ display: 'flex', alignItems: 'center', gap: '1.8rem' }}>
+                               <div className="avatar" style={{ width: '70px', height: '70px', borderRadius: '12px', background: 'linear-gradient(135deg, #1e1b4b, #3b82f6)', fontSize: '1.8rem', fontWeight: '900', color: '#fff' }}>{l.nombre_liga.charAt(0)}</div>
+                               <div style={{ flex: 1 }}>
+                                   <strong style={{ display: 'block', fontSize: '1.3rem', color: '#fff', marginBottom: '0.3rem' }}>{l.nombre_liga}</strong>
+                                   <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+                                       <span style={{ width: '8px', height: '8px', background: '#10b981', borderRadius: '50%' }}></span>
+                                       <span style={{ fontSize: '0.75rem', color: '#6b7280', fontWeight: 'bold', textTransform: 'uppercase' }}>Liga Activa</span>
+                                   </div>
+                                   <div style={{ marginTop: '0.55rem' }}>
+                                     {(() => {
+                                       const status = getTournamentStatusLabel(l.subdominio_o_slug);
+                                       return (
+                                         <span style={{ fontSize: '0.74rem', color: status.color, border: `1px solid ${status.border}`, background: status.bg, borderRadius: '999px', padding: '0.2rem 0.6rem', fontWeight: 'bold' }}>
+                                           {status.text}
+                                         </span>
+                                       );
+                                     })()}
+                                   </div>
+                               </div>
+                               <div style={{ width: '40px', height: '40px', background: 'rgba(255,255,255,0.05)', borderRadius: '50%', display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#fff' }}>
+                                   →
+                               </div>
+                          </div>
+                      </div>
+                  ))}
+                  {ligas.length === 0 && <p style={{ color: 'gray', gridColumn: '1/-1', textAlign: 'center', padding: '3rem' }}>No hay ligas públicas disponibles en este momento.</p>}
+              </div>
+          )}
+      </main>
+
+      {/* 4. Footer Section */}
+      <footer style={{ marginTop: '5rem', padding: '6rem 5% 4rem', background: '#000', borderTop: '1px solid rgba(255,255,255,0.05)' }}>
+          <div style={{ display: 'flex', flexWrap: 'wrap', gap: '4rem', justifyContent: 'space-between' }}>
+              <div>
+                  <div style={{ fontSize: '1.8rem', fontWeight: '900', color: '#fff', letterSpacing: '-1px', marginBottom: '1.5rem' }}>
+                      <span style={{ background: '#3b82f6', padding: '0.2rem 0.6rem', borderRadius: '4px', marginRight: '0.5rem' }}>LM</span>
+                      <span>LigaMaster SaaS</span>
+                  </div>
+                  <p style={{ color: '#4b5563', maxWidth: '300px', fontSize: '0.95rem', lineHeight: '1.6' }}>La infraestructura SaaS definitiva para la organización de torneos profesionales de alto impacto.</p>
+              </div>
+
+              <div style={{ display: 'flex', gap: '5rem' }}>
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
+                      <span style={{ color: '#fff', fontWeight: 'bold', marginBottom: '0.5rem', fontSize: '0.8rem', textTransform: 'uppercase', letterSpacing: '1px' }}>🏢 Corporativo</span>
+                      <button onClick={() => navigate('/organizer/access')} style={{ background: 'none', border: 'none', color: '#4b5563', textAlign: 'left', cursor: 'pointer', padding: 0, fontSize: '0.95rem' }} className="link-hover">Regístrate o inicia sesión</button>
+                      <button onClick={() => navigate('/representative/access')} style={{ background: 'none', border: 'none', color: '#4b5563', textAlign: 'left', cursor: 'pointer', padding: 0, fontSize: '0.95rem' }} className="link-hover">Acceso representante</button>
+                      <button onClick={() => navigate('/arbitro/login')} style={{ background: 'none', border: 'none', color: '#4b5563', textAlign: 'left', cursor: 'pointer', padding: 0, fontSize: '0.95rem' }} className="link-hover">Acceso árbitro</button>
+                      <button onClick={() => navigate('/login')} style={{ background: 'none', border: 'none', color: '#4b5563', textAlign: 'left', cursor: 'pointer', padding: 0, fontSize: '0.95rem' }} className="link-hover">SaaS Central Admin</button>
+                      <span style={{ color: '#4b5563', fontSize: '0.95rem', cursor: 'pointer' }}>Privacidad</span>
+                  </div>
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
+                      <span style={{ color: '#fff', fontWeight: 'bold', marginBottom: '0.5rem', fontSize: '0.8rem', textTransform: 'uppercase', letterSpacing: '1px' }}>Soporte</span>
+                      <span style={{ color: '#4b5563', fontSize: '0.95rem', cursor: 'pointer' }}>Reportar Incidencia</span>
+                      <span style={{ color: '#4b5563', fontSize: '0.95rem', cursor: 'pointer' }}>Documentación Beta</span>
+                  </div>
+              </div>
+          </div>
+          <div style={{ marginTop: '8rem', textAlign: 'center', opacity: 0.1, userSelect: 'none', pointerEvents: 'none' }}>
+              <div style={{ fontSize: '15vw', fontWeight: '950', letterSpacing: '-1vw', color: '#fff', padding: 0, margin: 0, lineHeight: 0.8 }}>LIGAMASTER</div>
+          </div>
+          <div style={{ textAlign: 'center', color: '#222', fontSize: '0.8rem', marginTop: '2rem' }}>
+              © 2026 LigaMaster SaaS Enterprise. Todos los derechos reservados.
+          </div>
+      </footer>
+    </div>
+  );
+}

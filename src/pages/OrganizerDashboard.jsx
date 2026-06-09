@@ -1,0 +1,1423 @@
+import React, { useState, useEffect } from 'react';
+import { useParams, useNavigate } from 'react-router-dom';
+import toast from 'react-hot-toast';
+import API_URL from '../api';
+
+const FOOTBALL_CATEGORIES = [
+  'Chupones',
+  'Infantil Menor',
+  'Infantil Mayor',
+  'Juvenil Menor',
+  'Juvenil Mayor',
+  'Sub-7',
+  'Sub-9',
+  'Sub-11',
+  'Sub-13',
+  'Sub-15',
+  'Sub-17',
+  'Sub-20',
+  'Primera División',
+  'Segunda División',
+  'Libre Varonil',
+  'Libre Femenil',
+  'Veteranos',
+  'Master'
+];
+
+export default function OrganizerDashboard() {
+  const { slug } = useParams();
+  const navigate = useNavigate();
+  const [equipos, setEquipos] = useState([]);
+  const [partidos, setPartidos] = useState([]);
+  const [torneos, setTorneos] = useState([]);
+  const [torneoForm, setTorneoForm] = useState({ nombre: '', categoria: '', formato: 'Liga (Todos contra todos)', fecha_inicio: '', fecha_fin: '', estatus: 'En Registro', premio: '' });
+  const [arbitros, setArbitros] = useState([]);
+  const [canchas, setCanchas] = useState([]);
+  const [enrollmentConfigDraft, setEnrollmentConfigDraft] = useState({});
+  const [enrollmentsByTorneo, setEnrollmentsByTorneo] = useState({});
+  const [equipoForm, setEquipoForm] = useState({ nombre: '', delegado: '', escudo: '' });
+  const [jornadaActiva, setJornadaActiva] = useState('Todas');
+  const [activeSegment, setActiveSegment] = useState('EQUIPOS'); // 'EQUIPOS', 'JUGADORES', 'CALENDARIO', 'CANCHAS', 'ARBITROS'
+  const [equipoJugadoresSeleccionado, setEquipoJugadoresSeleccionado] = useState(null);
+  const [programacionOpen, setProgramacionOpen] = useState(false);
+  const [partidoAProgramar, setPartidoAProgramar] = useState(null);
+  const [programacionForm, setProgramacionForm] = useState({ sede: '', horario: '' });
+  const [nuevoArbitro, setNuevoArbitro] = useState('');
+  const [nuevoRol, setNuevoRol] = useState('Central');
+  const [nuevaMatricula, setNuevaMatricula] = useState('');
+  const [nuevaCategoria, setNuevaCategoria] = useState('');
+  const [nuevoEquipoAsignado, setNuevoEquipoAsignado] = useState('');
+  const [nuevaCancha, setNuevaCancha] = useState({ nombre: '', direccion: '', tipo_superficie: 'Sintética', capacidad: '', notas: '' });
+  const [editandoArbitroId, setEditandoArbitroId] = useState(null);
+  const [searchQuery, setSearchQuery] = useState('');
+  const [tenantData, setTenantData] = useState(null);
+
+  const [matchModalOpen, setMatchModalOpen] = useState(false);
+  const [activeMatch, setActiveMatch] = useState(null);
+  const [statsForm, setStatsForm] = useState({
+      goles_local: 0, goles_visitante: 0,
+      anotadores_local: '', anotadores_visitante: '',
+      remates_local: 0, remates_visitante: 0,
+      remates_arco_local: 0, remates_arco_visitante: 0,
+      posesion_local: 50,
+      faltas_local: 0, faltas_visitante: 0,
+      amarillas_local: 0, amarillas_visitante: 0,
+      rojas_local: 0, rojas_visitante: 0,
+      corners_local: 0, corners_visitante: 0,
+      posicion_adelantada_local: 0, posicion_adelantada_visitante: 0
+  });
+
+  const fetchWithAuth = async (url, options = {}) => {
+    const token = localStorage.getItem(`tenant_token_${slug}`);
+    if (!token) {
+      navigate(`/organizer/${slug}/login`);
+      return null;
+    }
+    const headers = {
+      ...options.headers,
+      'Authorization': `Bearer ${token}`
+    };
+    
+    let res = null;
+    try {
+      res = await fetch(url, { ...options, headers });
+    } catch (err) {
+      toast.error('No se pudo conectar con el servidor.');
+      return null;
+    }
+    
+    if (res.status === 401 || res.status === 403) {
+      localStorage.removeItem(`tenant_token_${slug}`);
+      navigate(`/organizer/${slug}/login`);
+      return null;
+    }
+
+    if (!res.ok) {
+      try {
+        const data = await res.json();
+        toast.error(data.error || 'Error al cargar información del dashboard.');
+      } catch {
+        toast.error('Error al cargar información del dashboard.');
+      }
+      return null;
+    }
+
+    return res;
+  };
+
+  useEffect(() => {
+    const token = localStorage.getItem(`tenant_token_${slug}`);
+    if (!token) {
+      navigate(`/organizer/${slug}/login`);
+      return;
+    }
+
+    // 1. Verificar Seguridad Middleware
+    const verificarAcceso = async () => {
+      try {
+        const res = await fetch(`${API_URL}/api/verify-tenant/${slug}`);
+        const data = await res.json();
+        if (!res.ok) {
+           toast.error(data.error);
+           navigate('/suspended', { state: { tenant: data.data, error: data.error } });
+           return;
+        }
+        setTenantData(data.data);
+        fetchEquipos();
+        fetchPartidos();
+        fetchTorneos();
+        fetchArbitros();
+        fetchCanchas();
+      } catch(err) {
+        toast.error("Error validando tenant");
+      }
+    };
+    verificarAcceso();
+  }, [slug]);
+
+  const handleLogout = () => {
+    localStorage.removeItem(`tenant_token_${slug}`);
+    navigate(`/organizer/${slug}/login`);
+    toast.success("Sesión cerrada");
+  };
+
+  const fetchEquipos = async () => {
+    const res = await fetchWithAuth(`${API_URL}/api/organizer/${slug}/equipos`);
+    if (res) {
+      const data = await res.json();
+      setEquipos(Array.isArray(data) ? data : []);
+    }
+  };
+
+  const fetchPartidos = async () => {
+    const res = await fetchWithAuth(`${API_URL}/api/organizer/${slug}/calendario`);
+    if (res) {
+      const data = await res.json();
+      setPartidos(Array.isArray(data) ? data : []);
+    }
+  };
+
+  const fetchTorneos = async () => {
+    const res = await fetchWithAuth(`${API_URL}/api/organizer/${slug}/torneos`);
+    if (res) {
+      const data = await res.json();
+      const torneosList = Array.isArray(data) ? data : [];
+      setTorneos(torneosList);
+      const draft = {};
+      torneosList.forEach((t) => {
+        draft[t.id] = {
+          mantenimiento_cancha: t.cobros?.mantenimiento_cancha ?? 0,
+          arbitraje: t.cobros?.arbitraje ?? 0,
+          inscripcion_equipo: t.cobros?.inscripcion_equipo ?? 0,
+          costo_por_jugador: t.cobros?.costo_por_jugador ?? 0
+        };
+      });
+      setEnrollmentConfigDraft(draft);
+
+      const enrollmentMap = {};
+      await Promise.all(
+        torneosList.map(async (t) => {
+          const enrollmentRes = await fetchWithAuth(`${API_URL}/api/organizer/${slug}/torneos/${t.id}/inscripciones`);
+          if (enrollmentRes) {
+            const enrollmentData = await enrollmentRes.json();
+            enrollmentMap[t.id] = Array.isArray(enrollmentData.inscripciones) ? enrollmentData.inscripciones : [];
+          } else {
+            enrollmentMap[t.id] = [];
+          }
+        })
+      );
+      setEnrollmentsByTorneo(enrollmentMap);
+    }
+  };
+
+  const handleSaveEnrollmentConfig = async (torneoId) => {
+    const payload = enrollmentConfigDraft[torneoId] || {};
+    try {
+      const res = await fetchWithAuth(`${API_URL}/api/organizer/${slug}/torneos/${torneoId}/inscripcion-config`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload)
+      });
+      if (res) {
+        toast.success('Cobros de inscripción actualizados.');
+        fetchTorneos();
+      }
+    } catch {
+      toast.error('No se pudieron actualizar los cobros.');
+    }
+  };
+
+  const handleCopyEnrollmentLink = async (torneoId) => {
+    const link = `${window.location.origin}/inscripcion/${slug}/${torneoId}`;
+    try {
+      await navigator.clipboard.writeText(link);
+      toast.success('Liga de inscripción copiada.');
+    } catch {
+      toast.error('No se pudo copiar la liga.');
+    }
+  };
+
+  const fetchArbitros = async () => {
+    const res = await fetchWithAuth(`${API_URL}/api/organizer/${slug}/arbitros`);
+    if (res) {
+      const data = await res.json();
+      setArbitros(Array.isArray(data) ? data : []);
+    }
+  };
+
+  const fetchCanchas = async () => {
+    const res = await fetchWithAuth(`${API_URL}/api/organizer/${slug}/canchas`);
+    if (res) {
+      const data = await res.json();
+      setCanchas(Array.isArray(data) ? data : []);
+    }
+  };
+
+  const handleFileChange = (e) => {
+    const file = e.target.files[0];
+    if (file) {
+      const reader = new FileReader();
+      reader.onloadend = () => { setEquipoForm({ ...equipoForm, escudo: reader.result }); };
+      reader.readAsDataURL(file);
+    }
+  };
+
+  const handleAddEquipo = async (e) => {
+    e.preventDefault();
+    try {
+      const res = await fetchWithAuth(`${API_URL}/api/organizer/${slug}/equipos`, {
+        method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(equipoForm)
+      });
+      if (!res.ok) throw new Error("Error creando");
+      toast.success("Equipo inscrito");
+      setEquipoForm({ nombre: '', delegado: '', escudo: '' });
+      fetchEquipos();
+    } catch (err) { toast.error("Fallo al registrar equipo"); }
+  };
+
+  const handleAddTorneo = async (e) => {
+    e.preventDefault();
+    try {
+      const res = await fetchWithAuth(`${API_URL}/api/organizer/${slug}/torneos`, {
+        method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(torneoForm)
+      });
+      if (res.ok) { 
+          toast.success("Torneo Creado"); 
+          setTorneoForm({ nombre: '', categoria: '', formato: 'Liga (Todos contra todos)', fecha_inicio: '', fecha_fin: '', estatus: 'En Registro', premio: '' }); 
+          fetchTorneos(); 
+      }
+    } catch (err) {}
+  };
+
+  const handleAddArbitro = async (e) => {
+    e.preventDefault();
+    try {
+      const url = editandoArbitroId 
+          ? `${API_URL}/api/organizer/${slug}/arbitros/${editandoArbitroId}`
+          : `${API_URL}/api/organizer/${slug}/arbitros`;
+      const method = editandoArbitroId ? 'PUT' : 'POST';
+
+      const res = await fetchWithAuth(url, {
+        method, headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ nombre: nuevoArbitro, rol: nuevoRol, matricula: nuevaMatricula, categoria: nuevaCategoria, equipo_id: nuevoEquipoAsignado })
+      });
+      if (res.ok) { 
+          toast.success(editandoArbitroId ? "Árbitro Modificado" : "Árbitro Agregado al Padrón"); 
+          resetArbitroForm();
+          fetchArbitros(); 
+      }
+    } catch (err) {}
+  };
+
+  const resetArbitroForm = () => {
+      setNuevoArbitro(''); 
+      setNuevaMatricula('');
+      setNuevaCategoria('');
+      setNuevoRol('Central');
+      setNuevoEquipoAsignado('');
+      setEditandoArbitroId(null);
+  };
+
+  const handleEditMode = (a) => {
+      setEditandoArbitroId(a.id);
+      setNuevoArbitro(a.nombre);
+      setNuevaMatricula(a.matricula || '');
+      setNuevaCategoria(a.categoria || '');
+      setNuevoRol(a.rol);
+      setNuevoEquipoAsignado(a.equipo_id || '');
+  };
+
+  const handleDeleteArbitro = async (id) => {
+      if(!window.confirm("¿Seguro que deseas dar de baja a este árbitro?")) return;
+      try {
+          const res = await fetchWithAuth(`${API_URL}/api/organizer/${slug}/arbitros/${id}`, { method: 'DELETE' });
+          if(res && res.ok) { fetchArbitros(); toast.success("Árbitro dado de baja"); }
+      } catch(err){}
+  };
+
+  const handleAddCancha = async (e) => {
+    e.preventDefault();
+    try {
+      const res = await fetchWithAuth(`${API_URL}/api/organizer/${slug}/canchas`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(nuevaCancha)
+      });
+      if (res && res.ok) {
+        toast.success('Cancha registrada correctamente.');
+        setNuevaCancha({ nombre: '', direccion: '', tipo_superficie: 'Sintética', capacidad: '', notas: '' });
+        fetchCanchas();
+      }
+    } catch {
+      toast.error('No se pudo registrar la cancha.');
+    }
+  };
+
+  const handleDeleteCancha = async (id) => {
+    if (!window.confirm('¿Eliminar esta cancha?')) return;
+    try {
+      const res = await fetchWithAuth(`${API_URL}/api/organizer/${slug}/canchas/${id}`, { method: 'DELETE' });
+      if (res && res.ok) {
+        toast.success('Cancha eliminada.');
+        fetchCanchas();
+      }
+    } catch {
+      toast.error('No se pudo eliminar la cancha.');
+    }
+  };
+
+  const openMatchModal = (partido) => {
+      setActiveMatch(partido);
+      const st = partido.stats || {};
+      const remates = st.remates || { local: 0, vis: 0 };
+      const remates_arco = st.remates_arco || { local: 0, vis: 0 };
+      const posesion = st.posesion || { local: 50, vis: 50 };
+      const faltas = st.faltas || { local: 0, vis: 0 };
+      const amarillas = st.amarillas || { local: 0, vis: 0 };
+      const rojas = st.rojas || { local: 0, vis: 0 };
+      const corners = st.corners || { local: 0, vis: 0 };
+      const posicion_adelantada = st.posicion_adelantada || { local: 0, vis: 0 };
+
+      setStatsForm({
+          goles_local: partido.goles_local || 0, 
+          goles_visitante: partido.goles_visitante || 0,
+          anotadores_local: st.anotadoresLocal ? st.anotadoresLocal.join('\n') : '', 
+          anotadores_visitante: st.anotadoresVisitante ? st.anotadoresVisitante.join('\n') : '',
+          remates_local: remates.local, remates_visitante: remates.vis,
+          remates_arco_local: remates_arco.local, remates_arco_visitante: remates_arco.vis,
+          posesion_local: posesion.local,
+          faltas_local: faltas.local, faltas_visitante: faltas.vis,
+          amarillas_local: amarillas.local, amarillas_visitante: amarillas.vis,
+          rojas_local: rojas.local, rojas_visitante: rojas.vis,
+          corners_local: corners.local, corners_visitante: corners.vis,
+          posicion_adelantada_local: posicion_adelantada.local, posicion_adelantada_visitante: posicion_adelantada.vis
+      });
+      setMatchModalOpen(true);
+  };
+
+  const handleSaveMatchStats = async (e) => {
+      e.preventDefault();
+      const statsObj = {
+          anotadoresLocal: statsForm.anotadores_local.split('\n').filter(Boolean),
+          anotadoresVisitante: statsForm.anotadores_visitante.split('\n').filter(Boolean),
+          remates: { local: statsForm.remates_local, vis: statsForm.remates_visitante },
+          remates_arco: { local: statsForm.remates_arco_local, vis: statsForm.remates_arco_visitante },
+          posesion: { local: statsForm.posesion_local, vis: 100 - statsForm.posesion_local },
+          faltas: { local: statsForm.faltas_local, vis: statsForm.faltas_visitante },
+          amarillas: { local: statsForm.amarillas_local, vis: statsForm.amarillas_visitante },
+          rojas: { local: statsForm.rojas_local, vis: statsForm.rojas_visitante },
+          corners: { local: statsForm.corners_local, vis: statsForm.corners_visitante },
+          posicion_adelantada: { local: statsForm.posicion_adelantada_local, vis: statsForm.posicion_adelantada_visitante },
+      };
+      
+      try {
+        const res = await fetchWithAuth(`${API_URL}/api/organizer/${slug}/partidos/${activeMatch.id}`, {
+            method: 'PUT', headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ goles_local: parseInt(statsForm.goles_local), goles_visitante: parseInt(statsForm.goles_visitante), stats: statsObj })
+        });
+        if (res && res.ok) {
+           const data = await res.json();
+           toast.success(data.message);
+           setMatchModalOpen(false);
+           fetchPartidos();
+           fetchEquipos();
+        }
+      } catch {}
+  };
+
+  const handleGenerarRoundRobin = async () => {
+    if (equipos.length < 2) {
+       toast.error("Debes tener al menos 2 equipos para programar una jornada.");
+       return;
+    }
+    const myPromise = fetchWithAuth(`${API_URL}/api/organizer/${slug}/generar-calendario`, { method: 'POST' });
+    
+    toast.promise(myPromise, {
+      loading: 'Calculando Rol de Juegos (Algoritmo Round Robin)...',
+      success: '¡Calendario Matemático Creado! Cero choques de horarios.',
+      error: 'Error al generar horario',
+    });
+
+    await myPromise;
+    fetchPartidos();
+  };
+
+  const openProgramacion = (partido) => {
+    setPartidoAProgramar(partido);
+    setProgramacionForm({ sede: partido.sede || '', horario: partido.horario || '' });
+    setProgramacionOpen(true);
+  };
+
+  const handleSaveProgramacion = async (e) => {
+    e.preventDefault();
+    try {
+        const res = await fetchWithAuth(`${API_URL}/api/organizer/${slug}/partidos/${partidoAProgramar.id}/programacion`, {
+            method: 'PUT', headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(programacionForm)
+        });
+        if (res && res.ok) {
+            toast.success("Programación guardada.");
+            setProgramacionOpen(false);
+            fetchPartidos();
+        }
+    } catch {}
+  };
+
+  if (!tenantData) return <div style={{ color: 'white', padding: '2rem' }}>Cargando portal seguro...</div>;
+
+  // Filtrado de Jornadas
+  const partidosSafe = Array.isArray(partidos) ? partidos : [];
+  const jornadasReales = [...new Set(partidosSafe.map(p => p.jornada))].sort((a,b)=>a-b);
+  const partidosFiltrados = jornadaActiva === 'Todas' ? partidosSafe : partidosSafe.filter(p => p.jornada.toString() === jornadaActiva.toString());
+  const hasAnyContent = equipos.length > 0 || torneos.length > 0 || partidosSafe.length > 0 || arbitros.length > 0 || canchas.length > 0;
+
+  return (
+    <div className="main-content" style={{ animation: 'fadeIn 0.5s ease-out' }}>
+      <div className="header" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1.5rem'}}>
+          <div style={{ display: 'flex', flexDirection: 'column', gap: '0.4rem' }}>
+            <span className="premium-badge-txt" style={{ background: 'rgba(52, 211, 153, 0.1)', color: '#34d399', borderColor: 'rgba(52, 211, 153, 0.3)'}}>
+                 🛡️ Panel de Organizador (Cliente)
+            </span>
+            <h2 style={{ margin: 0 }}>Comité Organizador: {tenantData.nombre_liga}</h2>
+            <p style={{ color: '#cbd5e1', margin: 0, fontSize: '0.95rem' }}>
+              Integrantes del comité: <strong>{tenantData.dueno_nombre || 'No registrado'}</strong>
+            </p>
+            <p style={{ color: 'var(--text-muted)', margin: 0, fontSize: '0.9rem'}}>Arquitectura SaaS Aislada Múlti-Inquilino.</p>
+          </div>
+          
+          <button onClick={handleLogout} style={{ background: 'rgba(239, 68, 68, 0.1)', color: '#ef4444', border: '1px solid rgba(239, 68, 68, 0.3)', padding: '0.6rem 1.2rem', borderRadius: '10px', cursor: 'pointer', fontWeight: 'bold', display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+              🚪 Cerrar Sesión
+          </button>
+       </div>
+
+       <div className="glass-panel" style={{ padding: '1.3rem 1.5rem', marginBottom: '1.4rem', border: '1px solid rgba(59,130,246,0.25)', background: 'linear-gradient(90deg, rgba(30,58,138,0.25), rgba(17,24,39,0.35))' }}>
+          <h3 style={{ margin: 0, fontSize: '1.1rem' }}>
+            Bienvenido, {tenantData.dueno_nombre || 'Organizador'} 👋
+          </h3>
+          <p style={{ margin: '0.45rem 0 0 0', color: '#cbd5e1', fontSize: '0.92rem' }}>
+            Este es tu centro de control para crear equipos, registrar torneos, generar calendario y administrar árbitros.
+          </p>
+          <div style={{ marginTop: '0.9rem', display: 'flex', flexWrap: 'wrap', alignItems: 'center', gap: '0.7rem' }}>
+            <span style={{ color: '#e2e8f0', fontSize: '0.9rem' }}>¿Deseas asignar o crear un torneo ahora?</span>
+            <button
+              type="button"
+              onClick={() => setActiveSegment('CALENDARIO')}
+              style={{
+                background: 'linear-gradient(90deg, #8b5cf6, #6366f1)',
+                color: '#fff',
+                border: 'none',
+                borderRadius: '8px',
+                padding: '0.45rem 0.85rem',
+                fontWeight: 'bold',
+                cursor: 'pointer',
+                fontSize: '0.85rem'
+              }}
+            >
+              Ir a Torneos
+            </button>
+          </div>
+       </div>
+
+       {!hasAnyContent && (
+         <div className="glass-panel" style={{ padding: '1.4rem 1.6rem', marginBottom: '1.6rem', border: '1px dashed rgba(148,163,184,0.4)', background: 'rgba(15,23,42,0.45)' }}>
+           <h4 style={{ marginTop: 0, marginBottom: '0.75rem', color: '#f8fafc' }}>Aún no tienes nada creado</h4>
+           <p style={{ margin: '0 0 0.9rem 0', color: '#94a3b8', fontSize: '0.9rem' }}>
+             Sigue este orden recomendado para iniciar tu liga:
+           </p>
+           <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))', gap: '0.8rem' }}>
+             <div style={{ border: '1px solid rgba(255,255,255,0.08)', borderRadius: '10px', padding: '0.75rem' }}>
+               <strong style={{ fontSize: '0.92rem' }}>1) Crea tus equipos</strong>
+               <p style={{ margin: '0.35rem 0 0 0', color: '#9ca3af', fontSize: '0.84rem' }}>Ve a la pestaña EQUIPOS y registra tus franquicias.</p>
+             </div>
+             <div style={{ border: '1px solid rgba(255,255,255,0.08)', borderRadius: '10px', padding: '0.75rem' }}>
+               <strong style={{ fontSize: '0.92rem' }}>2) Registra un torneo</strong>
+               <p style={{ margin: '0.35rem 0 0 0', color: '#9ca3af', fontSize: '0.84rem' }}>En TORNEOS & CALENDARIO define nombre, formato y fechas.</p>
+             </div>
+             <div style={{ border: '1px solid rgba(255,255,255,0.08)', borderRadius: '10px', padding: '0.75rem' }}>
+               <strong style={{ fontSize: '0.92rem' }}>3) Genera el calendario</strong>
+               <p style={{ margin: '0.35rem 0 0 0', color: '#9ca3af', fontSize: '0.84rem' }}>Usa Round Robin y luego programa sedes y horarios.</p>
+             </div>
+             <div style={{ border: '1px solid rgba(255,255,255,0.08)', borderRadius: '10px', padding: '0.75rem' }}>
+               <strong style={{ fontSize: '0.92rem' }}>4) Administra árbitros</strong>
+               <p style={{ margin: '0.35rem 0 0 0', color: '#9ca3af', fontSize: '0.84rem' }}>Carga tu comisión arbitral para operación completa.</p>
+             </div>
+           </div>
+         </div>
+       )}
+
+       {/* Tab Navigation */}
+       <div style={{ display: 'flex', gap: '1rem', marginBottom: '2rem', background: 'rgba(255,255,255,0.03)', padding: '0.5rem', borderRadius: '15px', border: '1px solid rgba(255,255,255,0.05)', width: 'fit-content' }}>
+           <button 
+                onClick={() => setActiveSegment('EQUIPOS')}
+                style={{ padding: '0.8rem 1.5rem', borderRadius: '12px', border: 'none', background: activeSegment === 'EQUIPOS' ? 'linear-gradient(90deg, #8b5cf6, #6366f1)' : 'transparent', color: activeSegment === 'EQUIPOS' ? '#fff' : '#9ca3af', fontWeight: 'bold', cursor: 'pointer', transition: 'all 0.3s' }}
+           >
+               ⚽ Equipos (Franquicias)
+           </button>
+           <button 
+                onClick={() => setActiveSegment('JUGADORES')}
+                style={{ padding: '0.8rem 1.5rem', borderRadius: '12px', border: 'none', background: activeSegment === 'JUGADORES' ? 'linear-gradient(90deg, #8b5cf6, #6366f1)' : 'transparent', color: activeSegment === 'JUGADORES' ? '#fff' : '#9ca3af', fontWeight: 'bold', cursor: 'pointer', transition: 'all 0.3s' }}
+           >
+               👥 Jugadores
+           </button>
+           <button 
+                onClick={() => setActiveSegment('CALENDARIO')}
+                style={{ padding: '0.8rem 1.5rem', borderRadius: '12px', border: 'none', background: activeSegment === 'CALENDARIO' ? 'linear-gradient(90deg, #8b5cf6, #6366f1)' : 'transparent', color: activeSegment === 'CALENDARIO' ? '#fff' : '#9ca3af', fontWeight: 'bold', cursor: 'pointer', transition: 'all 0.3s' }}
+           >
+               🏆 Torneos & Calendario
+           </button>
+           <button 
+                onClick={() => setActiveSegment('ARBITROS')}
+                style={{ padding: '0.8rem 1.5rem', borderRadius: '12px', border: 'none', background: activeSegment === 'ARBITROS' ? 'linear-gradient(90deg, #8b5cf6, #6366f1)' : 'transparent', color: activeSegment === 'ARBITROS' ? '#fff' : '#9ca3af', fontWeight: 'bold', cursor: 'pointer', transition: 'all 0.3s' }}
+           >
+               🏁 Árbitros (Comisión)
+           </button>
+           <button
+                onClick={() => setActiveSegment('CANCHAS')}
+                style={{ padding: '0.8rem 1.5rem', borderRadius: '12px', border: 'none', background: activeSegment === 'CANCHAS' ? 'linear-gradient(90deg, #8b5cf6, #6366f1)' : 'transparent', color: activeSegment === 'CANCHAS' ? '#fff' : '#9ca3af', fontWeight: 'bold', cursor: 'pointer', transition: 'all 0.3s' }}
+           >
+               🏟️ Canchas
+           </button>
+       </div>
+
+       {activeSegment === 'EQUIPOS' && (
+         <div style={{ animation: 'slideUp 0.4s ease-out' }}>
+           <div style={{ display: 'grid', gridTemplateColumns: '1fr', gap: '2rem' }}>
+               {(() => {
+                   const MULTA_AMARILLA = 50;
+                   const MULTA_ROJA = 150;
+                   const partidosJornada = jornadaActiva === 'Todas' ? partidosSafe : partidosSafe.filter(p => p.jornada?.toString() === jornadaActiva.toString());
+                   const num = (v) => Number(v || 0);
+
+                   const teamMap = {};
+                   const ensureTeam = (nombre, escudo) => {
+                       if (!nombre) return null;
+                       if (!teamMap[nombre]) {
+                           teamMap[nombre] = { nombre, escudo: escudo || '', pj: 0, gf: 0, gc: 0, faltas: 0, amarillas: 0, rojas: 0 };
+                       }
+                       if (escudo && !teamMap[nombre].escudo) teamMap[nombre].escudo = escudo;
+                       return teamMap[nombre];
+                   };
+
+                   partidosJornada.forEach(p => {
+                       const st = p.stats || {};
+                       const faltas = st.faltas || { local: 0, vis: 0 };
+                       const amarillas = st.amarillas || { local: 0, vis: 0 };
+                       const rojas = st.rojas || { local: 0, vis: 0 };
+                       const finalizado = p.estatus === 'Finalizado';
+
+                       const local = ensureTeam(p.local_nombre, p.local_escudo);
+                       const visit = ensureTeam(p.visitante_nombre, p.visitante_escudo);
+
+                       if (local) {
+                           local.gf += num(p.goles_local); local.gc += num(p.goles_visitante);
+                           local.faltas += num(faltas.local); local.amarillas += num(amarillas.local); local.rojas += num(rojas.local);
+                           if (finalizado) local.pj++;
+                       }
+                       if (visit) {
+                           visit.gf += num(p.goles_visitante); visit.gc += num(p.goles_local);
+                           visit.faltas += num(faltas.vis); visit.amarillas += num(amarillas.vis); visit.rojas += num(rojas.vis);
+                           if (finalizado) visit.pj++;
+                       }
+                   });
+
+                   const teamStats = Object.values(teamMap).sort((a, b) => (b.gf - b.gc) - (a.gf - a.gc) || b.gf - a.gf);
+
+                   return (
+                       <div className="glass-panel" style={{ padding: '2rem' }}>
+                           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '1rem', borderBottom: '1px solid rgba(255,255,255,0.1)', paddingBottom: '0.8rem', marginBottom: '1.2rem' }}>
+                               <h3 style={{ margin: 0 }}>📊 Resumen General de la Jornada</h3>
+                               <select value={jornadaActiva} onChange={e => setJornadaActiva(e.target.value)} style={{ padding: '0.6rem', background: 'rgba(59, 130, 246, 0.1)', border: '1px solid rgba(59, 130, 246, 0.4)', color: '#fff', borderRadius: '8px', outline: 'none' }}>
+                                   <option value="Todas">Toda la temporada</option>
+                                   {jornadasReales.map(j => <option key={j} value={j}>Jornada {j}</option>)}
+                               </select>
+                           </div>
+
+                           <h4 style={{ margin: '0 0 0.8rem 0', color: '#c4b5fd' }}>Estadísticas por equipo</h4>
+                           {teamStats.length === 0 ? (
+                               <p style={{ color: '#94a3b8', fontSize: '0.85rem' }}>
+                                   Aún no hay partidos {jornadaActiva === 'Todas' ? 'registrados' : `en la jornada ${jornadaActiva}`}. Genera el rol y carga las actas en "Torneos & Calendario".
+                               </p>
+                           ) : (
+                               <div style={{ overflowX: 'auto' }}>
+                                   <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '0.85rem' }}>
+                                       <thead>
+                                           <tr style={{ textAlign: 'center', color: '#a5b4fc', borderBottom: '1px solid rgba(255,255,255,0.15)' }}>
+                                               <th style={{ padding: '0.7rem 0.6rem', textAlign: 'left' }}>Equipo</th>
+                                               <th style={{ padding: '0.7rem 0.4rem' }} title="Partidos jugados">PJ</th>
+                                               <th style={{ padding: '0.7rem 0.4rem' }} title="Goles a favor">GF</th>
+                                               <th style={{ padding: '0.7rem 0.4rem' }} title="Goles en contra">GC</th>
+                                               <th style={{ padding: '0.7rem 0.4rem' }} title="Diferencia de goles">DIF</th>
+                                               <th style={{ padding: '0.7rem 0.4rem' }}>Faltas</th>
+                                               <th style={{ padding: '0.7rem 0.4rem' }}>🟨</th>
+                                               <th style={{ padding: '0.7rem 0.4rem' }}>🟥</th>
+                                               <th style={{ padding: '0.7rem 0.4rem' }} title="Multa estimada por tarjetas">Multas</th>
+                                           </tr>
+                                       </thead>
+                                       <tbody>
+                                           {teamStats.map(ts => {
+                                               const multa = ts.amarillas * MULTA_AMARILLA + ts.rojas * MULTA_ROJA;
+                                               const dif = ts.gf - ts.gc;
+                                               return (
+                                                   <tr key={ts.nombre} style={{ borderBottom: '1px solid rgba(255,255,255,0.06)', color: '#e2e8f0', textAlign: 'center' }}>
+                                                       <td style={{ padding: '0.6rem', textAlign: 'left' }}>
+                                                           <div style={{ display: 'flex', alignItems: 'center', gap: '0.6rem' }}>
+                                                               {ts.escudo ? (
+                                                                   <img src={ts.escudo} alt={ts.nombre} style={{ width: '28px', height: '28px', borderRadius: '50%', objectFit: 'contain' }} />
+                                                               ) : (
+                                                                   <div className="avatar" style={{ width: '28px', height: '28px', fontSize: '0.7rem' }}>{ts.nombre.substring(0, 2).toUpperCase()}</div>
+                                                               )}
+                                                               <strong>{ts.nombre}</strong>
+                                                           </div>
+                                                       </td>
+                                                       <td style={{ padding: '0.6rem', color: '#9ca3af' }}>{ts.pj}</td>
+                                                       <td style={{ padding: '0.6rem' }}>{ts.gf}</td>
+                                                       <td style={{ padding: '0.6rem' }}>{ts.gc}</td>
+                                                       <td style={{ padding: '0.6rem', color: dif > 0 ? '#34d399' : dif < 0 ? '#f87171' : '#9ca3af' }}>{dif > 0 ? `+${dif}` : dif}</td>
+                                                       <td style={{ padding: '0.6rem' }}>{ts.faltas}</td>
+                                                       <td style={{ padding: '0.6rem', color: '#facc15' }}>{ts.amarillas}</td>
+                                                       <td style={{ padding: '0.6rem', color: '#ef4444' }}>{ts.rojas}</td>
+                                                       <td style={{ padding: '0.6rem', color: '#a78bfa', fontWeight: 'bold' }}>${multa.toLocaleString()}</td>
+                                                   </tr>
+                                               );
+                                           })}
+                                       </tbody>
+                                   </table>
+                                   <p style={{ margin: '0.8rem 0 0 0', fontSize: '0.74rem', color: '#6b7280' }}>
+                                       Multas estimadas con base en tarjetas: 🟨 ${MULTA_AMARILLA} c/u · 🟥 ${MULTA_ROJA} c/u.
+                                   </p>
+                               </div>
+                           )}
+                       </div>
+                   );
+               })()}
+
+               <div className="glass-panel" style={{ padding: '2rem' }}>
+                    <h3 style={{ borderBottom: '1px solid rgba(255,255,255,0.1)', paddingBottom: '0.5rem'}}>Listado Oficial Privado</h3>
+                    <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(280px, 1fr))', gap: '1rem', marginTop: '1rem' }}>
+                    {equipos.map(e => (
+                        <div key={e.id} style={{ display: 'flex', alignItems: 'center', gap: '1rem', background: 'rgba(255,255,255,0.03)', padding: '1.2rem', borderRadius: '16px', border: '1px solid rgba(255,255,255,0.05)' }}>
+                            {e.escudo ? (
+                                <img src={e.escudo} alt={e.nombre} style={{ width: '50px', height: '50px', objectFit: 'contain', borderRadius: '50%', background: 'rgba(255,255,255,0.05)', padding: '2px' }} />
+                            ) : (
+                                <div className="avatar" style={{width: '50px', height: '50px', fontSize:'1.4rem'}}>{e.nombre.substring(0,2).toUpperCase()}</div>
+                            )}
+                            <div style={{ display: 'flex', flexDirection: 'column' }}>
+                            <strong style={{ fontSize: '1.2rem', color: '#fff' }}>{e.nombre}</strong>
+                            <span style={{ fontSize: '0.85rem', color: '#9ca3af' }}>DT: {e.delegado || 'Sin Asignar'}</span>
+                            </div>
+                        </div>
+                    ))}
+                    {equipos.length === 0 && <span style={{ color:'gray', fontSize: '0.8rem' }}>Sin equipos registrados...</span>}
+                    </div>
+                </div>
+            </div>
+         </div>
+       )}
+
+       {activeSegment === 'JUGADORES' && (
+         <div style={{ animation: 'slideUp 0.4s ease-out' }}>
+            <div className="glass-panel" style={{ padding: '2.5rem' }}>
+                {(() => {
+                    const equipoSel = equipoJugadoresSeleccionado
+                        ? Object.values(enrollmentsByTorneo).flat().find((ins) => ins.id === equipoJugadoresSeleccionado)
+                        : null;
+
+                    if (equipoSel) {
+                        const jugadores = equipoSel.jugadores || [];
+                        const torneoEquipo = torneos.find((t) => t.id === equipoSel.torneo_id);
+                        return (
+                            <div>
+                                <button
+                                    type="button"
+                                    onClick={() => setEquipoJugadoresSeleccionado(null)}
+                                    className="btn btn-sm"
+                                    style={{ background: 'rgba(255,255,255,0.08)', color: '#e2e8f0', border: '1px solid rgba(255,255,255,0.15)', marginBottom: '1.2rem' }}
+                                >
+                                    ← Volver a equipos
+                                </button>
+                                <div style={{ display: 'flex', alignItems: 'center', gap: '1rem', borderBottom: '1px solid rgba(255,255,255,0.1)', paddingBottom: '1rem', marginBottom: '1.2rem' }}>
+                                    <div className="avatar" style={{ width: '48px', height: '48px', fontSize: '1.1rem' }}>
+                                        {String(equipoSel.nombre_equipo || '??').substring(0, 2).toUpperCase()}
+                                    </div>
+                                    <div style={{ display: 'flex', flexDirection: 'column' }}>
+                                        <h2 style={{ margin: 0, color: '#fff', fontSize: '1.3rem' }}>{equipoSel.nombre_equipo}</h2>
+                                        <span style={{ fontSize: '0.82rem', color: '#9ca3af' }}>
+                                            {torneoEquipo ? `🏆 ${torneoEquipo.nombre} · ` : ''}Rep: {equipoSel.representante?.nombre_representante || 'N/D'} · {jugadores.length} jugador(es)
+                                        </span>
+                                    </div>
+                                </div>
+
+                                {jugadores.length === 0 ? (
+                                    <p style={{ color: '#94a3b8', fontSize: '0.85rem' }}>Este equipo no tiene jugadores registrados.</p>
+                                ) : (
+                                    <div style={{ overflowX: 'auto' }}>
+                                        <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '0.85rem' }}>
+                                            <thead>
+                                                <tr style={{ textAlign: 'left', color: '#a5b4fc', borderBottom: '1px solid rgba(255,255,255,0.15)' }}>
+                                                    <th style={{ padding: '0.7rem 0.6rem' }}>#</th>
+                                                    <th style={{ padding: '0.7rem 0.6rem' }}>Foto</th>
+                                                    <th style={{ padding: '0.7rem 0.6rem' }}>Nombre completo</th>
+                                                    <th style={{ padding: '0.7rem 0.6rem' }}>Dorsal</th>
+                                                    <th style={{ padding: '0.7rem 0.6rem' }}>Rol</th>
+                                                    <th style={{ padding: '0.7rem 0.6rem' }}>CURP</th>
+                                                </tr>
+                                            </thead>
+                                            <tbody>
+                                                {jugadores.map((j, idx) => (
+                                                    <tr key={idx} style={{ borderBottom: '1px solid rgba(255,255,255,0.06)', color: '#e2e8f0' }}>
+                                                        <td style={{ padding: '0.6rem', color: '#9ca3af' }}>{idx + 1}</td>
+                                                        <td style={{ padding: '0.6rem' }}>
+                                                            {j.foto_jugador ? (
+                                                                <img src={j.foto_jugador} alt={j.nombre} style={{ width: '38px', height: '38px', borderRadius: '50%', objectFit: 'cover', border: '1px solid rgba(255,255,255,0.15)' }} />
+                                                            ) : (
+                                                                <div className="avatar" style={{ width: '38px', height: '38px', fontSize: '0.85rem' }}>
+                                                                    {String(j.nombre || '?').substring(0, 1).toUpperCase()}
+                                                                </div>
+                                                            )}
+                                                        </td>
+                                                        <td style={{ padding: '0.6rem' }}>
+                                                            {[j.nombre, j.apellido_paterno, j.apellido_materno].filter(Boolean).join(' ')}
+                                                        </td>
+                                                        <td style={{ padding: '0.6rem' }}>{j.numero_playera ? `#${j.numero_playera}` : '—'}</td>
+                                                        <td style={{ padding: '0.6rem' }}>{j.rol_liderazgo && j.rol_liderazgo !== 'Ninguno' ? j.rol_liderazgo : '—'}</td>
+                                                        <td style={{ padding: '0.6rem', color: '#9ca3af', fontFamily: 'monospace' }}>{j.curp || '—'}</td>
+                                                    </tr>
+                                                ))}
+                                            </tbody>
+                                        </table>
+                                    </div>
+                                )}
+                            </div>
+                        );
+                    }
+
+                    return (
+                        <div>
+                            <h2 style={{ borderBottom: '1px solid rgba(255,255,255,0.1)', paddingBottom: '0.5rem', marginBottom: '0.5rem', color: '#fff', marginTop: 0 }}>👥 Jugadores Inscritos</h2>
+                            <p style={{ margin: '0 0 1.5rem 0', color: '#94a3b8', fontSize: '0.88rem' }}>
+                                Selecciona un equipo para ver la tabla de jugadores inscritos.
+                            </p>
+
+                            {torneos.length === 0 && (
+                                <span style={{ color: 'gray', fontSize: '0.85rem' }}>No hay torneos creados todavía.</span>
+                            )}
+
+                            {torneos.map((t) => {
+                                const inscripciones = enrollmentsByTorneo[t.id] || [];
+                                const totalJugadores = inscripciones.reduce((acc, ins) => acc + (ins.jugadores || []).length, 0);
+                                return (
+                                    <div key={t.id} style={{ marginBottom: '2rem' }}>
+                                        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', flexWrap: 'wrap', gap: '0.5rem', marginBottom: '1rem' }}>
+                                            <h3 style={{ margin: 0, color: '#c4b5fd', fontSize: '1.15rem' }}>🏆 {t.nombre}</h3>
+                                            <span style={{ fontSize: '0.8rem', color: '#9ca3af' }}>
+                                                {inscripciones.length} equipo(s) · {totalJugadores} jugador(es)
+                                            </span>
+                                        </div>
+
+                                        {inscripciones.length === 0 ? (
+                                            <p style={{ margin: 0, color: '#94a3b8', fontSize: '0.84rem' }}>
+                                                Aún no hay equipos inscritos en este torneo.
+                                            </p>
+                                        ) : (
+                                            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(280px, 1fr))', gap: '1rem' }}>
+                                                {inscripciones.map((ins) => (
+                                                    <button
+                                                        type="button"
+                                                        key={ins.id}
+                                                        onClick={() => setEquipoJugadoresSeleccionado(ins.id)}
+                                                        style={{ textAlign: 'left', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '0.8rem', background: 'rgba(255,255,255,0.03)', borderRadius: '16px', border: '1px solid rgba(255,255,255,0.07)', padding: '1.2rem', transition: 'all 0.2s', color: 'inherit' }}
+                                                        onMouseEnter={(e) => { e.currentTarget.style.background = 'rgba(139,92,246,0.12)'; e.currentTarget.style.borderColor = 'rgba(139,92,246,0.4)'; }}
+                                                        onMouseLeave={(e) => { e.currentTarget.style.background = 'rgba(255,255,255,0.03)'; e.currentTarget.style.borderColor = 'rgba(255,255,255,0.07)'; }}
+                                                    >
+                                                        <div className="avatar" style={{ width: '42px', height: '42px', fontSize: '1rem' }}>
+                                                            {String(ins.nombre_equipo || '??').substring(0, 2).toUpperCase()}
+                                                        </div>
+                                                        <div style={{ display: 'flex', flexDirection: 'column' }}>
+                                                            <strong style={{ color: '#fff', fontSize: '1.05rem' }}>{ins.nombre_equipo}</strong>
+                                                            <span style={{ fontSize: '0.76rem', color: '#9ca3af' }}>
+                                                                Rep: {ins.representante?.nombre_representante || 'N/D'} · {(ins.jugadores || []).length} jugador(es)
+                                                            </span>
+                                                            <span style={{ fontSize: '0.72rem', color: '#a5b4fc', marginTop: '0.2rem' }}>Ver jugadores →</span>
+                                                        </div>
+                                                    </button>
+                                                ))}
+                                            </div>
+                                        )}
+                                    </div>
+                                );
+                            })}
+                        </div>
+                    );
+                })()}
+            </div>
+         </div>
+       )}
+
+       {activeSegment === 'CALENDARIO' && (
+         <div style={{ animation: 'slideUp 0.4s ease-out' }}>
+            <div className="glass-panel" style={{ padding: '2.5rem', marginBottom: '2rem' }}>
+                <h2 style={{ borderBottom: '1px solid rgba(255,255,255,0.1)', paddingBottom: '0.5rem', marginBottom: '1.5rem', color: '#fff', marginTop: 0 }}>🏆 Gestión de Torneos Oficiales</h2>
+                
+                <form onSubmit={handleAddTorneo} style={{ display: 'flex', flexDirection: 'column', gap: '1.5rem', background: 'rgba(255,255,255,0.02)', padding: '2rem', borderRadius: '20px', border: '1px solid rgba(255,255,255,0.05)' }}>
+                    <div>
+                        <label style={{ fontSize: '0.85rem', color: '#9ca3af', marginBottom: '0.5rem', display: 'block' }}>Nombre del Torneo *</label>
+                        <input 
+                            type="text" required placeholder="Ej: Torneo Clausura 2026" 
+                            value={torneoForm.nombre} onChange={e => setTorneoForm({...torneoForm, nombre: e.target.value})}
+                            style={{ width: '100%', padding: '0.8rem', background: 'rgba(0,0,0,0.3)', border: '1px solid rgba(255,255,255,0.1)', color: '#fff', borderRadius: '8px', outline: 'none' }}
+                        />
+                    </div>
+
+                    <div>
+                        <label style={{ fontSize: '0.85rem', color: '#9ca3af', marginBottom: '0.5rem', display: 'block' }}>Categoría del Torneo *</label>
+                        <select
+                          required
+                          value={torneoForm.categoria}
+                          onChange={e => setTorneoForm({ ...torneoForm, categoria: e.target.value })}
+                          style={{ width: '100%', padding: '0.8rem', background: 'rgba(0,0,0,0.3)', border: '1px solid rgba(255,255,255,0.1)', color: '#fff', borderRadius: '8px', outline: 'none' }}
+                        >
+                          <option value="">Selecciona una categoría</option>
+                          {FOOTBALL_CATEGORIES.map((cat) => (
+                            <option key={cat} value={cat}>{cat}</option>
+                          ))}
+                        </select>
+                    </div>
+
+                    <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '1.5rem' }}>
+                        <div>
+                            <label style={{ fontSize: '0.85rem', color: '#9ca3af', marginBottom: '0.5rem', display: 'block' }}>Configuración del Formato</label>
+                            <select value={torneoForm.formato} onChange={e => setTorneoForm({...torneoForm, formato: e.target.value})} style={{ width: '100%', padding: '0.8rem', background: 'rgba(0,0,0,0.3)', border: '1px solid rgba(255,255,255,0.1)', color: '#fff', borderRadius: '8px', outline: 'none' }}>
+                                <option value="Liga (Todos contra todos)">Liga (Todos contra todos)</option>
+                                <option value="Eliminación Directa">Eliminación Directa</option>
+                                <option value="Grupos + Liguilla">Grupos + Liguilla</option>
+                            </select>
+                        </div>
+                        <div>
+                            <label style={{ fontSize: '0.85rem', color: '#9ca3af', marginBottom: '0.5rem', display: 'block' }}>Estado del Torneo</label>
+                            <select value={torneoForm.estatus} onChange={e => setTorneoForm({...torneoForm, estatus: e.target.value})} style={{ width: '100%', padding: '0.8rem', background: 'rgba(0,0,0,0.3)', border: '1px solid rgba(255,255,255,0.1)', color: '#fff', borderRadius: '8px', outline: 'none' }}>
+                                <option value="En Registro">🟢 En Registro</option>
+                                <option value="Activo">⚽ Activo (Jugándose)</option>
+                                <option value="Pausado">⏸️ Pausado</option>
+                                <option value="Finalizado">🏁 Finalizado</option>
+                            </select>
+                        </div>
+                    </div>
+
+                    <div style={{ display: 'grid', gridTemplateColumns: 'minmax(200px, 1fr) minmax(200px, 1fr) minmax(200px, 1fr)', gap: '1.5rem', alignItems: 'end' }}>
+                        <div>
+                            <label style={{ fontSize: '0.85rem', color: '#9ca3af', marginBottom: '0.5rem', display: 'block' }}>Fecha de Inicio</label>
+                            <input type="date" value={torneoForm.fecha_inicio} onChange={e => setTorneoForm({...torneoForm, fecha_inicio: e.target.value})} style={{ width: '100%', padding: '0.8rem', background: 'rgba(0,0,0,0.3)', border: '1px solid rgba(255,255,255,0.1)', color: '#fff', borderRadius: '8px', outline: 'none', colorScheme: 'dark' }} />
+                        </div>
+                        <div>
+                            <label style={{ fontSize: '0.85rem', color: '#9ca3af', marginBottom: '0.5rem', display: 'block' }}>Fecha de Fin (Estimada)</label>
+                            <input type="date" value={torneoForm.fecha_fin} onChange={e => setTorneoForm({...torneoForm, fecha_fin: e.target.value})} style={{ width: '100%', padding: '0.8rem', background: 'rgba(0,0,0,0.3)', border: '1px solid rgba(255,255,255,0.1)', color: '#fff', borderRadius: '8px', outline: 'none', colorScheme: 'dark' }} />
+                        </div>
+                        <div>
+                            <label style={{ fontSize: '0.85rem', color: '#9ca3af', marginBottom: '0.5rem', display: 'block' }}>Premio / Trofeo</label>
+                            <input type="text" placeholder="Ej: Copa de Oro, 1000 USD" value={torneoForm.premio} onChange={e => setTorneoForm({...torneoForm, premio: e.target.value})} style={{ width: '100%', padding: '0.8rem', background: 'rgba(0,0,0,0.3)', border: '1px solid rgba(255,255,255,0.1)', color: '#fff', borderRadius: '8px', outline: 'none' }} />
+                        </div>
+                    </div>
+
+                    <div style={{ display: 'flex', justifyContent: 'flex-end', marginTop: '0.5rem' }}>
+                        <button type="submit" className="btn btn-primary" style={{ padding: '0.8rem 2rem', background: 'linear-gradient(90deg, #ec4899, #8b5cf6)', border: 'none' }}>Registrar Torneo Oficial</button>
+                    </div>
+                </form>
+
+                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(350px, 1fr))', gap: '1.5rem', marginTop: '3rem' }}>
+                    {torneos.map(t => {
+                        let badgeColor = '#3b82f6';
+                        let badgeBg = 'rgba(59, 130, 246, 0.1)';
+                        if (t.estatus === 'Activo') { badgeColor = '#10b981'; badgeBg = 'rgba(16, 185, 129, 0.1)'; }
+                        if (t.estatus === 'Pausado') { badgeColor = '#f59e0b'; badgeBg = 'rgba(245, 158, 11, 0.1)'; }
+                        if (t.estatus === 'Finalizado') { badgeColor = '#ef4444'; badgeBg = 'rgba(239, 68, 68, 0.1)'; }
+
+                        return (
+                        <div key={t.id} style={{ background: 'rgba(255,255,255,0.03)', padding: '1.5rem', borderRadius: '16px', border: '1px solid rgba(255,255,255,0.05)', position: 'relative' }}>
+                            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
+                                <h3 style={{ margin: 0, color: '#f3f4f6', fontSize: '1.2rem', paddingRight: '1rem' }}>{t.nombre}</h3>
+                                <span style={{ color: badgeColor, background: badgeBg, border: `1px solid ${badgeColor}`, padding: '0.2rem 0.6rem', borderRadius: '20px', fontSize: '0.75rem', fontWeight: 'bold', whiteSpace: 'nowrap' }}>
+                                    {t.estatus || 'En Registro'}
+                                </span>
+                            </div>
+                            
+                            <div style={{ marginTop: '1rem', display: 'flex', flexDirection: 'column', gap: '0.5rem', fontSize: '0.85rem', color: '#9ca3af' }}>
+                                <div><span style={{ color: '#d1d5db' }}>Formato:</span> {t.formato || 'No especificado'}</div>
+                                <div><span style={{ color: '#d1d5db' }}>Categoría:</span> {t.categoria || 'No especificada'}</div>
+                                <div><span style={{ color: '#d1d5db' }}>Vigencia:</span> {t.fecha_inicio ? new Date(t.fecha_inicio).toLocaleDateString() : 'TBD'} - {t.fecha_fin ? new Date(t.fecha_fin).toLocaleDateString() : 'TBD'}</div>
+                                {t.premio && <div style={{ marginTop: '0.5rem', color: '#facc15', fontWeight: 'bold' }}>🎓 Premio Disp: {t.premio}</div>}
+                            </div>
+                            <div style={{ marginTop: '1rem', borderTop: '1px solid rgba(255,255,255,0.08)', paddingTop: '0.9rem' }}>
+                              <strong style={{ fontSize: '0.86rem', color: '#c4b5fd' }}>Cobros para inscripción de representantes</strong>
+                              <p style={{ margin: '0.45rem 0 0.7rem 0', color: '#94a3b8', fontSize: '0.8rem', lineHeight: 1.4 }}>
+                                Este apartado define lo que pagará cada equipo representante al inscribirse en este torneo.
+                                Es un <strong>cobro único por toda la jornada</strong>, sin importar el número de jugadores. Se calcula así: <strong>Total = Mantenimiento + Arbitraje + Inscripción + Costo extra</strong>.
+                              </p>
+                              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '0.6rem', marginTop: '0.6rem' }}>
+                                <div>
+                                  <label style={{ display: 'block', fontSize: '0.75rem', color: '#a5b4fc', marginBottom: '0.3rem' }}>Mantenimiento de canchas (por jornada)</label>
+                                  <input
+                                    type="number"
+                                    min="0"
+                                    value={enrollmentConfigDraft[t.id]?.mantenimiento_cancha ?? 0}
+                                    onChange={(e) => setEnrollmentConfigDraft({
+                                      ...enrollmentConfigDraft,
+                                      [t.id]: { ...(enrollmentConfigDraft[t.id] || {}), mantenimiento_cancha: e.target.value }
+                                    })}
+                                    placeholder="Ej: 350"
+                                    style={{ width: '100%', padding: '0.55rem', borderRadius: '8px', background: 'rgba(0,0,0,0.3)', border: '1px solid rgba(255,255,255,0.1)', color: '#fff' }}
+                                  />
+                                </div>
+                                <div>
+                                  <label style={{ display: 'block', fontSize: '0.75rem', color: '#a5b4fc', marginBottom: '0.3rem' }}>Arbitraje (por jornada)</label>
+                                  <input
+                                    type="number"
+                                    min="0"
+                                    value={enrollmentConfigDraft[t.id]?.arbitraje ?? 0}
+                                    onChange={(e) => setEnrollmentConfigDraft({
+                                      ...enrollmentConfigDraft,
+                                      [t.id]: { ...(enrollmentConfigDraft[t.id] || {}), arbitraje: e.target.value }
+                                    })}
+                                    placeholder="Ej: 500"
+                                    style={{ width: '100%', padding: '0.55rem', borderRadius: '8px', background: 'rgba(0,0,0,0.3)', border: '1px solid rgba(255,255,255,0.1)', color: '#fff' }}
+                                  />
+                                </div>
+                                <div>
+                                  <label style={{ display: 'block', fontSize: '0.75rem', color: '#a5b4fc', marginBottom: '0.3rem' }}>Inscripción (por jornada)</label>
+                                  <input
+                                    type="number"
+                                    min="0"
+                                    value={enrollmentConfigDraft[t.id]?.inscripcion_equipo ?? 0}
+                                    onChange={(e) => setEnrollmentConfigDraft({
+                                      ...enrollmentConfigDraft,
+                                      [t.id]: { ...(enrollmentConfigDraft[t.id] || {}), inscripcion_equipo: e.target.value }
+                                    })}
+                                    placeholder="Ej: 1200"
+                                    style={{ width: '100%', padding: '0.55rem', borderRadius: '8px', background: 'rgba(0,0,0,0.3)', border: '1px solid rgba(255,255,255,0.1)', color: '#fff' }}
+                                  />
+                                </div>
+                                <div>
+                                  <label style={{ display: 'block', fontSize: '0.75rem', color: '#a5b4fc', marginBottom: '0.3rem' }}>Costo extra (por jornada)</label>
+                                  <input
+                                    type="number"
+                                    min="0"
+                                    value={enrollmentConfigDraft[t.id]?.costo_por_jugador ?? 0}
+                                    onChange={(e) => setEnrollmentConfigDraft({
+                                      ...enrollmentConfigDraft,
+                                      [t.id]: { ...(enrollmentConfigDraft[t.id] || {}), costo_por_jugador: e.target.value }
+                                    })}
+                                    placeholder="Ej: 80"
+                                    style={{ width: '100%', padding: '0.55rem', borderRadius: '8px', background: 'rgba(0,0,0,0.3)', border: '1px solid rgba(255,255,255,0.1)', color: '#fff' }}
+                                  />
+                                </div>
+                              </div>
+                              <p style={{ margin: '0.65rem 0 0 0', fontSize: '0.78rem', color: '#94a3b8' }}>
+                                La liga de inscripción abre un formulario para que el representante cree su usuario, elija este torneo y reciba el total a pagar.
+                              </p>
+                              <div style={{ display: 'flex', gap: '0.6rem', marginTop: '0.8rem' }}>
+                                <button type="button" onClick={() => handleSaveEnrollmentConfig(t.id)} className="btn btn-sm" style={{ background: '#4f46e5', color: '#fff' }}>
+                                  Guardar cobros
+                                </button>
+                                <button type="button" onClick={() => handleCopyEnrollmentLink(t.id)} className="btn btn-sm" style={{ background: 'rgba(255,255,255,0.08)', color: '#e2e8f0', border: '1px solid rgba(255,255,255,0.15)' }}>
+                                  Copiar liga de inscripción
+                                </button>
+                              </div>
+                              <div style={{ marginTop: '0.9rem', borderTop: '1px solid rgba(255,255,255,0.08)', paddingTop: '0.8rem' }}>
+                                <strong style={{ fontSize: '0.84rem', color: '#93c5fd' }}>
+                                  Equipos inscritos ({(enrollmentsByTorneo[t.id] || []).length})
+                                </strong>
+                                {(enrollmentsByTorneo[t.id] || []).length === 0 ? (
+                                  <p style={{ margin: '0.45rem 0 0 0', color: '#94a3b8', fontSize: '0.8rem' }}>
+                                    Aún no hay inscripciones de equipos para este torneo.
+                                  </p>
+                                ) : (
+                                  <div style={{ marginTop: '0.45rem', display: 'grid', gap: '0.45rem' }}>
+                                    {(enrollmentsByTorneo[t.id] || []).map((ins) => (
+                                      <div key={ins.id} style={{ border: '1px solid rgba(255,255,255,0.08)', borderRadius: '8px', padding: '0.55rem 0.7rem', background: 'rgba(255,255,255,0.02)' }}>
+                                        <div style={{ display: 'flex', justifyContent: 'space-between', gap: '0.8rem', flexWrap: 'wrap' }}>
+                                          <strong style={{ color: '#e2e8f0', fontSize: '0.82rem' }}>{ins.nombre_equipo}</strong>
+                                          <span style={{ color: '#fbbf24', fontWeight: 'bold', fontSize: '0.8rem' }}>${Number(ins.total_cobro || 0).toFixed(2)}</span>
+                                        </div>
+                                        <div style={{ marginTop: '0.2rem', color: '#9ca3af', fontSize: '0.76rem' }}>
+                                          Representante: {ins.representante?.nombre_representante || 'N/D'} · Jugadores: {(ins.jugadores || []).length}
+                                        </div>
+                                      </div>
+                                    ))}
+                                  </div>
+                                )}
+                              </div>
+                            </div>
+                        </div>
+                    )})}
+                    {torneos.length === 0 && <span style={{ color:'gray', fontSize: '0.8rem' }}>Sin torneos gestionados...</span>}
+                </div>
+            </div>
+
+            <div className="glass-panel" style={{ padding: '2.5rem' }}>
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '2rem'}}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '1.5rem' }}>
+                    <h3 style={{ margin: 0 }}>📅 Calendario Oficial Desarrollado</h3>
+                    <select value={jornadaActiva} onChange={e => setJornadaActiva(e.target.value)} style={{ padding: '0.6rem', background: 'rgba(59, 130, 246, 0.1)', border: '1px solid rgba(59, 130, 246, 0.4)', color: '#fff', borderRadius: '8px', outline: 'none' }}>
+                        <option value="Todas">Toda la pre-temporada</option>
+                        {jornadasReales.map(j => <option key={j} value={j}>Ver Jornada {j}</option>)}
+                    </select>
+                </div>
+                <button className="btn" style={{ background: '#ec4899', color: '#fff' }} onClick={handleGenerarRoundRobin}>
+                    ✨ Generar Rol (Round Robin)
+                </button>
+                </div>
+                
+                <table style={{ width: '100%', borderCollapse: 'collapse', marginTop: '1rem' }}>
+                <thead>
+                    <tr style={{ background: 'rgba(255,255,255,0.05)'}}>
+                        <th style={{ padding: '1rem', textAlign: 'center', borderRadius: '10px 0 0 10px'}}>Jornada</th>
+                        <th style={{ padding: '1rem', textAlign: 'center'}}>Local</th>
+                        <th style={{ padding: '1rem', textAlign: 'center'}}>Programación (Cancha / Hora)</th>
+                        <th style={{ padding: '1rem', textAlign: 'center'}}>Visitante</th>
+                        <th style={{ padding: '1rem', textAlign: 'right', borderRadius: '0 10px 10px 0'}}>Administrar</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {partidosFiltrados.map(p => (
+                    <tr key={p.id} style={{ borderBottom: '1px solid rgba(255,255,255,0.05)' }}>
+                        <td style={{ padding: '1rem', textAlign: 'center', color: '#9ca3af' }}>Jornada {p.jornada}</td>
+                        <td style={{ padding: '1rem', textAlign: 'center' }}>
+                            <div style={{ display: 'flex', alignItems: 'center', gap: '0.8rem', justifyContent: 'flex-end' }}>
+                                <strong style={{fontSize: '1.1rem'}}>{p.local_nombre}</strong>
+                                {p.local_escudo && <img src={p.local_escudo} alt={p.local_nombre} style={{ width: '30px', height: '30px', borderRadius: '50%', objectFit: 'contain' }} />}
+                            </div>
+                        </td>
+                        <td style={{ padding: '1.5rem 1rem', textAlign: 'center' }}>
+                            <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '0.4rem' }}>
+                                <span style={{ fontSize: '0.9rem', color: p.sede ? '#facc15' : '#6b7280', fontWeight: 'bold' }}>📍 {p.sede || 'Sin Sede'}</span>
+                                <span style={{ fontSize: '0.9rem', color: p.horario ? '#34d399' : '#6b7280' }}>🕒 {p.horario || 'Sin Horario'}</span>
+                                <button onClick={() => openProgramacion(p)} className="btn btn-sm block-hover" style={{ background: 'rgba(255,255,255,0.05)', padding: '0.3rem 0.8rem', border: '1px solid rgba(255,255,255,0.1)', color: '#a78bfa', fontSize: '0.75rem', marginTop: '0.4rem' }}>📅 Fijar Fecha / Sede</button>
+                            </div>
+                        </td>
+                        <td style={{ padding: '1rem', textAlign: 'center' }}>
+                            <div style={{ display: 'flex', alignItems: 'center', gap: '0.8rem', justifyContent: 'flex-start' }}>
+                                {p.visitante_escudo && <img src={p.visitante_escudo} alt={p.visitante_nombre} style={{ width: '30px', height: '30px', borderRadius: '50%', objectFit: 'contain' }} />}
+                                <strong style={{fontSize: '1.1rem'}}>{p.visitante_nombre}</strong>
+                            </div>
+                        </td>
+                        <td style={{ padding: '1rem', textAlign: 'right' }}>
+                            {p.estatus === 'Pendiente' ? (
+                                <button onClick={() => openMatchModal(p)} className="btn btn-sm" style={{ background: '#3b82f6', color: '#fff', fontSize: '0.8rem', padding: '0.5rem 1rem'}}>
+                                    📝 Cargar Stats
+                                </button>
+                            ) : (
+                                <div style={{display: 'flex', flexDirection: 'column', alignItems: 'flex-end', gap: '0.5rem'}}>
+                                <span className="premium-badge-txt" style={{ margin:0, color:'#10b981', border:'1px solid #10b981', background:'rgba(16,185,129,0.1)', padding: '0.3rem 0.6rem'}}>
+                                    {p.goles_local} - {p.goles_visitante} ✅
+                                </span>
+                                <button onClick={() => openMatchModal(p)} className="btn btn-sm" style={{ background: 'transparent', color: '#a78bfa', fontSize: '0.8rem', padding: '0.3rem 0.6rem', border: '1px solid rgba(167, 139, 250, 0.4)'}}>
+                                    ✏️ Editar Acta
+                                </button>
+                                </div>
+                            )}
+                        </td>
+                    </tr>
+                    ))}
+                    {partidosFiltrados.length === 0 && (
+                        <tr><td colSpan="5" style={{ textAlign: 'center', padding: '3rem', color: 'gray', fontSize: '1.1rem'}}>Usa el algoritmo matemático para crear el torneo automáticamente o cambia el Filtro de Jornada.</td></tr>
+                    )}
+                </tbody>
+                </table>
+            </div>
+         </div>
+       )}
+
+      {activeSegment === 'CANCHAS' && (
+        <div style={{ animation: 'slideUp 0.4s ease-out' }}>
+          <div className="glass-panel" style={{ padding: '2rem', marginBottom: '2rem' }}>
+            <h3 style={{ marginTop: 0, borderBottom: '1px solid rgba(255,255,255,0.1)', paddingBottom: '0.5rem' }}>🏟️ Gestión de Canchas / Sedes</h3>
+            <p style={{ marginTop: '0.6rem', color: '#9ca3af', fontSize: '0.85rem' }}>
+              Registra aquí las canchas disponibles para usarlas al programar partidos.
+            </p>
+
+            <form onSubmit={handleAddCancha} style={{ marginTop: '1rem', display: 'grid', gap: '0.8rem', background: 'rgba(255,255,255,0.02)', padding: '1rem', borderRadius: '14px', border: '1px solid rgba(255,255,255,0.06)' }}>
+              <div style={{ display: 'grid', gridTemplateColumns: '1.2fr 1fr 1fr 1fr', gap: '0.7rem' }}>
+                <input
+                  required
+                  value={nuevaCancha.nombre}
+                  onChange={e => setNuevaCancha({ ...nuevaCancha, nombre: e.target.value })}
+                  placeholder="Nombre cancha (Ej: Cancha Municipal 1)"
+                  style={{ width: '100%', padding: '0.75rem', borderRadius: '8px', border: '1px solid rgba(255,255,255,0.12)', background: 'rgba(0,0,0,0.3)', color: '#fff' }}
+                />
+                <input
+                  value={nuevaCancha.direccion}
+                  onChange={e => setNuevaCancha({ ...nuevaCancha, direccion: e.target.value })}
+                  placeholder="Dirección / referencia"
+                  style={{ width: '100%', padding: '0.75rem', borderRadius: '8px', border: '1px solid rgba(255,255,255,0.12)', background: 'rgba(0,0,0,0.3)', color: '#fff' }}
+                />
+                <select
+                  value={nuevaCancha.tipo_superficie}
+                  onChange={e => setNuevaCancha({ ...nuevaCancha, tipo_superficie: e.target.value })}
+                  style={{ width: '100%', padding: '0.75rem', borderRadius: '8px', border: '1px solid rgba(255,255,255,0.12)', background: 'rgba(0,0,0,0.3)', color: '#fff' }}
+                >
+                  <option value="Sintética">Sintética</option>
+                  <option value="Natural">Natural</option>
+                  <option value="Mixta">Mixta</option>
+                  <option value="Fut 7">Fut 7</option>
+                  <option value="Fut 11">Fut 11</option>
+                </select>
+                <input
+                  type="number"
+                  min="0"
+                  value={nuevaCancha.capacidad}
+                  onChange={e => setNuevaCancha({ ...nuevaCancha, capacidad: e.target.value })}
+                  placeholder="Capacidad"
+                  style={{ width: '100%', padding: '0.75rem', borderRadius: '8px', border: '1px solid rgba(255,255,255,0.12)', background: 'rgba(0,0,0,0.3)', color: '#fff' }}
+                />
+              </div>
+              <div style={{ display: 'flex', gap: '0.7rem' }}>
+                <input
+                  value={nuevaCancha.notas}
+                  onChange={e => setNuevaCancha({ ...nuevaCancha, notas: e.target.value })}
+                  placeholder="Notas (opcional): vestidores, iluminación, estacionamiento, etc."
+                  style={{ flex: 1, padding: '0.75rem', borderRadius: '8px', border: '1px solid rgba(255,255,255,0.12)', background: 'rgba(0,0,0,0.3)', color: '#fff' }}
+                />
+                <button type="submit" className="btn btn-primary" style={{ whiteSpace: 'nowrap' }}>➕ Registrar cancha</button>
+              </div>
+            </form>
+
+            <div style={{ marginTop: '1rem', display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(260px, 1fr))', gap: '0.7rem' }}>
+              {canchas.map((c) => (
+                <div key={c.id} style={{ border: '1px solid rgba(255,255,255,0.08)', borderRadius: '10px', padding: '0.75rem', background: 'rgba(255,255,255,0.02)' }}>
+                  <strong style={{ color: '#e2e8f0' }}>{c.nombre}</strong>
+                  <div style={{ marginTop: '0.35rem', fontSize: '0.8rem', color: '#94a3b8' }}>
+                    {c.tipo_superficie || 'N/D'} · Capacidad: {c.capacidad || 'N/D'}
+                  </div>
+                  {c.direccion && (
+                    <div style={{ marginTop: '0.2rem', fontSize: '0.78rem', color: '#9ca3af' }}>📍 {c.direccion}</div>
+                  )}
+                  {c.notas && (
+                    <div style={{ marginTop: '0.2rem', fontSize: '0.78rem', color: '#9ca3af' }}>{c.notas}</div>
+                  )}
+                  <div style={{ marginTop: '0.55rem', display: 'flex', justifyContent: 'flex-end' }}>
+                    <button type="button" onClick={() => handleDeleteCancha(c.id)} className="btn btn-sm" style={{ background: 'transparent', color: '#f87171', border: '1px solid rgba(248,113,113,0.35)' }}>
+                      Eliminar
+                    </button>
+                  </div>
+                </div>
+              ))}
+              {canchas.length === 0 && (
+                <span style={{ color: '#6b7280', fontSize: '0.8rem' }}>Aún no hay canchas registradas.</span>
+              )}
+            </div>
+          </div>
+        </div>
+      )}
+
+       {activeSegment === 'ARBITROS' && (
+         <div style={{ animation: 'slideUp 0.4s ease-out' }}>
+            <div className="glass-panel" style={{ padding: '2.5rem' }}>
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1.5rem' }}>
+                   <h2 style={{ margin: 0 }}>🏁 Gestionar Comisión de Árbitros</h2>
+                </div>
+                
+                <form onSubmit={handleAddArbitro} style={{ display: 'flex', flexDirection: 'column', gap: '1rem', marginBottom: '2.5rem', background: 'rgba(255,255,255,0.02)', padding: '2rem', borderRadius: '20px', border: '1px solid rgba(255,255,255,0.05)' }}>
+                    <div style={{ display: 'flex', gap: '1rem' }}>
+                        <div style={{ flex: 2 }}>
+                            <label style={{ fontSize: '0.8rem', color: '#9ca3af', marginBottom: '0.4rem', display: 'block' }}>Nombre del Silbante</label>
+                            <input required value={nuevoArbitro} onChange={e => setNuevoArbitro(e.target.value)} placeholder="Ej: Adonai Escobedo" style={{ width: '100%', padding: '0.8rem', borderRadius: '10px', border: '1px solid rgba(255,255,255,0.1)', background: 'rgba(0,0,0,0.3)', color: '#fff'}}/>
+                        </div>
+                        <div style={{ flex: 1 }}>
+                            <label style={{ fontSize: '0.8rem', color: '#9ca3af', marginBottom: '0.4rem', display: 'block' }}>Rol de Campo</label>
+                            <select value={nuevoRol} onChange={e => setNuevoRol(e.target.value)} style={{ width: '100%', padding: '0.8rem', borderRadius: '10px', border: '1px solid rgba(255,255,255,0.1)', background: 'rgba(0,0,0,0.3)', color: '#fff', cursor: 'pointer'}}>
+                                <option value="Central">Central</option>
+                                <option value="Asistente 1">Asistente 1</option>
+                                <option value="Asistente 2">Asistente 2</option>
+                                <option value="Cuarto Árbitro">Cuarto Árbitro</option>
+                            </select>
+                        </div>
+                    </div>
+                    <div style={{ display: 'flex', gap: '1rem', alignItems: 'flex-end' }}>
+                        <div style={{ flex: 1 }}>
+                            <label style={{ fontSize: '0.8rem', color: '#9ca3af', marginBottom: '0.4rem', display: 'block' }}>Matrícula Profesional</label>
+                            <input value={nuevaMatricula} onChange={e => setNuevaMatricula(e.target.value)} placeholder="ID Oficial" style={{ width: '100%', padding: '0.8rem', borderRadius: '10px', border: '1px solid rgba(255,255,255,0.1)', background: 'rgba(0,0,0,0.3)', color: '#fff'}}/>
+                        </div>
+                        <div style={{ flex: 1 }}>
+                            <label style={{ fontSize: '0.8rem', color: '#9ca3af', marginBottom: '0.4rem', display: 'block' }}>Nivel / Categoría</label>
+                            <input value={nuevaCategoria} onChange={e => setNuevaCategoria(e.target.value)} placeholder="Ej: FIFA / Juvenil A" style={{ width: '100%', padding: '0.8rem', borderRadius: '10px', border: '1px solid rgba(255,255,255,0.1)', background: 'rgba(0,0,0,0.3)', color: '#fff'}}/>
+                        </div>
+                        <div style={{ flex: 1 }}>
+                            <label style={{ fontSize: '0.8rem', color: '#9ca3af', marginBottom: '0.4rem', display: 'block' }}>Club Asignado</label>
+                            <select value={nuevoEquipoAsignado} onChange={e => setNuevoEquipoAsignado(e.target.value)} style={{ width: '100%', padding: '0.8rem', borderRadius: '10px', border: '1px solid rgba(255,255,255,0.1)', background: 'rgba(0,0,0,0.3)', color: '#fff', cursor: 'pointer'}}>
+                                <option value="">Libre (Sin conflicto)</option>
+                                {equipos.map(eq => <option key={eq.id} value={eq.id}>{eq.nombre}</option>)}
+                            </select>
+                        </div>
+                        <button type="submit" className="btn btn-primary" style={{ padding: '0.8rem 2rem' }}>{editandoArbitroId ? '⚡ Actualizar' : '➕ Registrar'}</button>
+                        {editandoArbitroId && <button type="button" onClick={resetArbitroForm} className="btn" style={{background: 'rgba(255,255,255,0.1)', color: '#fff', padding: '0.8rem'}}>X</button>}
+                    </div>
+                </form>
+
+                <div style={{ position: 'relative', marginBottom: '2rem' }}>
+                    <span style={{ position: 'absolute', left: '1.2rem', top: '50%', transform: 'translateY(-50%)', fontSize: '1.2rem' }}>🔍</span>
+                    <input 
+                    placeholder="Buscador Inteligente de Silbantes (Nombre, Matrícula o Categoría)..." 
+                    value={searchQuery}
+                    onChange={e => setSearchQuery(e.target.value)}
+                    style={{ width: '100%', padding: '1rem 1rem 1rem 3.5rem', borderRadius: '15px', border: '1px solid rgba(139, 92, 246, 0.4)', background: 'rgba(139, 92, 246, 0.05)', color: '#fff', outline: 'none', transition: 'all 0.3s', fontSize: '1.1rem' }}
+                    />
+                </div>
+
+                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(350px, 1fr))', gap: '1.2rem' }}>
+                {arbitros
+                    .filter(a => {
+                        const term = searchQuery.toLowerCase();
+                        return a.nombre.toLowerCase().includes(term) || (a.matricula && a.matricula.toLowerCase().includes(term)) || (a.categoria && a.categoria.toLowerCase().includes(term));
+                    })
+                    .map(a => (
+                    <div key={a.id} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', background: 'rgba(255,255,255,0.03)', padding: '1.5rem', borderRadius: '20px', border: '1px solid rgba(255,255,255,0.05)', borderLeft: a.disponibilidad ? '5px solid #10b981' : '5px solid #ef4444' }}>
+                        
+                        <div style={{ display: 'flex', flexDirection: 'column' }}>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: '0.8rem' }}>
+                            <div style={{ width: '12px', height: '12px', borderRadius: '50%', background: a.disponibilidad ? '#10b981' : '#ef4444', boxShadow: a.disponibilidad ? '0 0 12px #10b981' : '0 0 12px #ef4444' }}></div>
+                            <strong style={{ fontSize: '1.2rem', color: '#fff'}}>{a.nombre}</strong>
+                        </div>
+                        <span style={{ color: 'var(--text-muted)', fontSize: '0.9rem', marginTop: '0.5rem', paddingLeft: '1.5rem'}}>
+                            {a.matricula ? `ID: ${a.matricula}` : 'Sin ID'} • {a.categoria || 'Regional'}
+                            {a.equipo_asignado_nombre && <span style={{color: '#f87171'}}> • Excluido de: {a.equipo_asignado_nombre}</span>}
+                        </span>
+                        </div>
+
+                        <div style={{ display: 'flex', alignItems: 'center', gap: '1rem' }}>
+                        <span className="premium-badge-txt" style={{ margin:0, background: 'rgba(139, 92, 246, 0.1)', color: '#a78bfa', borderColor: 'rgba(139, 92, 246, 0.3)', padding: '0.3rem 0.6rem' }}>{a.rol}</span>
+                        <button onClick={() => handleEditMode(a)} className="btn btn-sm block-hover" title="Editar" style={{ background: 'transparent', padding: '0.5rem', color: '#fff', border: '1px solid rgba(255,255,255,0.1)', cursor: 'pointer', borderRadius: '8px' }}>✏️</button>
+                        <button onClick={() => handleDeleteArbitro(a.id)} className="btn btn-sm block-hover" title="Eliminar" style={{ background: 'transparent', padding: '0.5rem', color: '#ef4444', border: '1px solid rgba(239, 68, 68, 0.2)', cursor: 'pointer', borderRadius: '8px' }}>🗑️</button>
+                        </div>
+                    </div>
+                    ))}
+                {arbitros.length === 0 && <span style={{ color:'gray', fontSize: '1rem', textAlign: 'center', padding: '3rem', gridColumn: '1/-1' }}>Padrón de silbantes vacío. Comienza registrando uno arriba.</span>}
+                </div>
+            </div>
+         </div>
+       )}
+
+      {matchModalOpen && activeMatch && (
+        <div style={{ position: 'fixed', top: 0, left: 0, width: '100%', height: '100%', background: 'rgba(0,0,0,0.85)', backdropFilter: 'blur(10px)', zIndex: 9999, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+          <div className="glass-panel" style={{ width: '90%', maxWidth: '900px', maxHeight: '90vh', overflowY: 'auto', padding: '0', borderRadius: '24px', border: '1px solid rgba(255,255,255,0.1)' }}>
+             
+             {/* Modal Header */}
+             <div style={{ background: 'linear-gradient(90deg, #1e1b4b, #3b82f6)', padding: '1.5rem 2rem', display: 'flex', justifyContent: 'space-between', alignItems: 'center', position: 'sticky', top: 0, zIndex: 10 }}>
+                <h2 style={{ margin: 0, color: 'white', display: 'flex', alignItems: 'center', gap: '0.5rem' }}><span>📊</span> Match Center (Captura Avanzada)</h2>
+                <button onClick={() => setMatchModalOpen(false)} style={{ background: 'rgba(255,255,255,0.2)', border: 'none', color: '#fff', fontSize: '1.5rem', cursor: 'pointer', width: '40px', height: '40px', borderRadius: '50%', display: 'flex', alignItems: 'center', justifyContent: 'center', transition: 'all 0.3s' }} className="block-hover">×</button>
+             </div>
+
+             <form onSubmit={handleSaveMatchStats} style={{ padding: '2rem' }}>
+                
+                {/* Score Section */}
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '2rem', background: 'rgba(255,255,255,0.03)', padding: '2rem', borderRadius: '20px', border: '1px solid rgba(255,255,255,0.05)' }}>
+                    <div style={{ textAlign: 'center', width: '35%' }}>
+                        <div style={{ width: '60px', height: '60px', background: '#1e1b4b', color: '#fff', borderRadius: '50%', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '1.5rem', fontWeight: 'bold', margin: '0 auto 1rem', border: '2px solid rgba(255,255,255,0.2)' }}>{activeMatch.local_nombre.substring(0,2).toUpperCase()}</div>
+                        <h3 style={{ margin: 0, fontSize: '1.2rem', color: '#f3f4f6' }}>{activeMatch.local_nombre}</h3>
+                        <span style={{ fontSize: '0.8rem', color: '#9ca3af' }}>Equipo Local</span>
+                        <input type="number" required min="0" value={statsForm.goles_local} onChange={e => setStatsForm({...statsForm, goles_local: e.target.value})} disabled={activeMatch.estatus === 'Finalizado'} style={{ width: '80px', padding: '0.5rem', background: 'transparent', border: activeMatch.estatus === 'Finalizado' ? '2px solid gray' : '2px solid #3b82f6', color: '#fff', borderRadius: '12px', textAlign: 'center', fontSize: '2.5rem', fontWeight: 'bold', marginTop: '1rem', outline: 'none' }} />
+                    </div>
+                    
+                    <div style={{ textAlign: 'center', width: '30%', display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '1rem' }}>
+                         <span style={{fontSize: '1rem', color: '#9ca3af', textTransform: 'uppercase', letterSpacing: '2px'}}>Jornada {activeMatch.jornada}</span>
+                         {activeMatch.estatus === 'Finalizado' && <span style={{fontSize: '0.8rem', color: '#10b981', background: 'rgba(16,185,129,0.1)', padding:'0.2rem 0.5rem', borderRadius:'8px'}}>Modo Edición</span>}
+                         <div style={{ fontSize: '2rem', fontWeight: 'bold', color: '#4b5563' }}>VS</div>
+                         
+                         <div style={{ width: '100%', marginTop: '1rem' }}>
+                            <label style={{ fontSize: '0.85rem', color: '#9ca3af', marginBottom: '0.5rem', display: 'block' }}>Posesión de Balón</label>
+                            <input type="range" title="Controla la posesión del Local. La visita se calcula automático." required min="0" max="100" value={statsForm.posesion_local} onChange={e => setStatsForm({...statsForm, posesion_local: e.target.value})} style={{ width: '100%', accentColor: '#3b82f6', height: '6px', borderRadius: '5px' }} />
+                            <div style={{ display: 'flex', justifyContent: 'space-between', marginTop: '0.5rem', fontWeight: 'bold' }}>
+                                <span style={{ color: '#60a5fa' }}>{statsForm.posesion_local}% L</span>
+                                <span style={{ color: '#f87171' }}>{100 - statsForm.posesion_local}% V</span>
+                            </div>
+                         </div>
+                    </div>
+                    
+                    <div style={{ textAlign: 'center', width: '35%' }}>
+                        <div style={{ width: '60px', height: '60px', background: '#3b82f6', color: '#fff', borderRadius: '50%', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '1.5rem', fontWeight: 'bold', margin: '0 auto 1rem', border: '2px solid rgba(255,255,255,0.2)' }}>{activeMatch.visitante_nombre.substring(0,2).toUpperCase()}</div>
+                        <h3 style={{ margin: 0, fontSize: '1.2rem', color: '#f3f4f6' }}>{activeMatch.visitante_nombre}</h3>
+                        <span style={{ fontSize: '0.8rem', color: '#9ca3af' }}>Equipo Visitante</span>
+                        <input type="number" required min="0" value={statsForm.goles_visitante} onChange={e => setStatsForm({...statsForm, goles_visitante: e.target.value})} disabled={activeMatch.estatus === 'Finalizado'} style={{ width: '80px', padding: '0.5rem', background: 'transparent', border: activeMatch.estatus === 'Finalizado' ? '2px solid gray' : '2px solid #ef4444', color: '#fff', borderRadius: '12px', textAlign: 'center', fontSize: '2.5rem', fontWeight: 'bold', marginTop: '1rem', outline: 'none' }} />
+                    </div>
+                </div>
+
+                {/* Grid Anotadores */}
+                <h4 style={{ color: '#a78bfa', marginBottom: '1rem', borderBottom: '1px solid rgba(255,255,255,0.1)', paddingBottom: '0.5rem' }}>Cronología (Autores de los Goles)</h4>
+                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '2rem', marginBottom: '2rem' }}>
+                    <div>
+                        <textarea rows="3" placeholder={`Ejemplo:\nPedro Vite 48'\nChino Huerta 90'`} value={statsForm.anotadores_local} onChange={e => setStatsForm({...statsForm, anotadores_local: e.target.value})} style={{ width: '100%', padding: '1rem', background: 'rgba(0,0,0,0.3)', border: '1px solid rgba(59, 130, 246, 0.3)', color: '#fff', borderRadius: '12px', resize: 'vertical', fontFamily: 'monospace', outline: 'none' }} />
+                        <span style={{ fontSize: '0.75rem', color: '#9ca3af' }}>Un jugador por línea. Asegúrate de incluir el minuto.</span>
+                    </div>
+                    <div>
+                        <textarea rows="3" placeholder={`Ejemplo:\nArmando González 55'`} value={statsForm.anotadores_visitante} onChange={e => setStatsForm({...statsForm, anotadores_visitante: e.target.value})} style={{ width: '100%', padding: '1rem', background: 'rgba(0,0,0,0.3)', border: '1px solid rgba(239, 68, 68, 0.3)', color: '#fff', borderRadius: '12px', resize: 'vertical', fontFamily: 'monospace', outline: 'none' }} />
+                        <span style={{ fontSize: '0.75rem', color: '#9ca3af' }}>Un jugador por línea.</span>
+                    </div>
+                </div>
+
+                {/* Grid Estadísticas Espejo */}
+                <h4 style={{ color: '#a78bfa', marginBottom: '1rem', borderBottom: '1px solid rgba(255,255,255,0.1)', paddingBottom: '0.5rem' }}>Métricas Avanzadas (Input Tabular)</h4>
+                <div style={{ display: 'grid', gridTemplateColumns: 'minmax(250px, 1fr) 180px minmax(250px, 1fr)', gap: '1rem', background: 'rgba(255,255,255,0.02)', padding: '1.5rem', borderRadius: '16px', alignItems: 'center' }}>
+                     
+                     {/* Columna Local Inputs */}
+                     <div style={{ display: 'flex', flexDirection: 'column', gap: '1rem', alignItems: 'flex-end' }}>
+                        <div style={{ display: 'flex', gap: '0.5rem' }}><input type="number" min="0" value={statsForm.remates_local} onChange={e => setStatsForm({...statsForm, remates_local: e.target.value})} style={inputStatStyle}/><input type="number" min="0" value={statsForm.remates_arco_local} onChange={e => setStatsForm({...statsForm, remates_arco_local: e.target.value})} style={inputStatStyle}/></div>
+                        <input type="number" min="0" value={statsForm.faltas_local} onChange={e => setStatsForm({...statsForm, faltas_local: e.target.value})} style={inputStatStyle}/>
+                        <div style={{ display: 'flex', gap: '0.5rem' }}><input title="Amarillas" type="number" min="0" value={statsForm.amarillas_local} onChange={e => setStatsForm({...statsForm, amarillas_local: e.target.value})} style={{...inputStatStyle, borderBottom: '2px solid #facc15'}}/><input title="Rojas" type="number" min="0" value={statsForm.rojas_local} onChange={e => setStatsForm({...statsForm, rojas_local: e.target.value})} style={{...inputStatStyle, borderBottom: '2px solid #ef4444'}}/></div>
+                        <input type="number" min="0" value={statsForm.posicion_adelantada_local} onChange={e => setStatsForm({...statsForm, posicion_adelantada_local: e.target.value})} style={inputStatStyle}/>
+                        <input type="number" min="0" value={statsForm.corners_local} onChange={e => setStatsForm({...statsForm, corners_local: e.target.value})} style={inputStatStyle}/>
+                     </div>
+                     
+                     {/* Columna Etiquetas Centrales */}
+                     <div style={{ display: 'flex', flexDirection: 'column', gap: '1rem', textAlign: 'center', fontSize: '0.85rem', color: '#d1d5db', textTransform: 'uppercase', fontWeight: 'bold' }}>
+                        <div style={{ height: '38px', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>Remates / Al Arco</div>
+                        <div style={{ height: '38px', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>Faltas</div>
+                        <div style={{ height: '38px', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>Tarjetas (Am / Rj)</div>
+                        <div style={{ height: '38px', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>Fueras de Lugar</div>
+                        <div style={{ height: '38px', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>Tiros de Esquina</div>
+                     </div>
+
+                     {/* Columna Visita Inputs */}
+                     <div style={{ display: 'flex', flexDirection: 'column', gap: '1rem', alignItems: 'flex-start' }}>
+                        <div style={{ display: 'flex', gap: '0.5rem' }}><input type="number" min="0" value={statsForm.remates_visitante} onChange={e => setStatsForm({...statsForm, remates_visitante: e.target.value})} style={inputStatStyle}/><input type="number" min="0" value={statsForm.remates_arco_visitante} onChange={e => setStatsForm({...statsForm, remates_arco_visitante: e.target.value})} style={inputStatStyle}/></div>
+                        <input type="number" min="0" value={statsForm.faltas_visitante} onChange={e => setStatsForm({...statsForm, faltas_visitante: e.target.value})} style={inputStatStyle}/>
+                        <div style={{ display: 'flex', gap: '0.5rem' }}><input title="Amarillas" type="number" min="0" value={statsForm.amarillas_visitante} onChange={e => setStatsForm({...statsForm, amarillas_visitante: e.target.value})} style={{...inputStatStyle, borderBottom: '2px solid #facc15'}}/><input title="Rojas" type="number" min="0" value={statsForm.rojas_visitante} onChange={e => setStatsForm({...statsForm, rojas_visitante: e.target.value})} style={{...inputStatStyle, borderBottom: '2px solid #ef4444'}}/></div>
+                        <input type="number" min="0" value={statsForm.posicion_adelantada_visitante} onChange={e => setStatsForm({...statsForm, posicion_adelantada_visitante: e.target.value})} style={inputStatStyle}/>
+                        <input type="number" min="0" value={statsForm.corners_visitante} onChange={e => setStatsForm({...statsForm, corners_visitante: e.target.value})} style={inputStatStyle}/>
+                     </div>
+                </div>
+
+                <div style={{ display: 'flex', justifyContent: 'flex-end', marginTop: '2rem', gap: '1rem' }}>
+                    <button type="button" onClick={() => setMatchModalOpen(false)} className="btn" style={{ background: 'transparent', color: '#9ca3af', border: '1px solid rgba(255,255,255,0.1)' }}>Cancelar Captura</button>
+                    <button type="submit" className="btn btn-primary" style={{ padding: '0.8rem 2rem', fontSize: '1.1rem', background: 'linear-gradient(90deg, #ec4899, #8b5cf6)', border: 'none', boxShadow: '0 4px 15px rgba(236, 72, 153, 0.4)' }}>✅ Sellar Acta Oficial</button>
+                </div>
+             </form>
+          </div>
+        </div>
+      )}
+      {programacionOpen && partidoAProgramar && (
+        <div style={{ position: 'fixed', top: 0, left: 0, width: '100%', height: '100%', background: 'rgba(0,0,0,0.85)', backdropFilter: 'blur(10px)', zIndex: 10000, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+          <div className="glass-panel" style={{ width: '90%', maxWidth: '400px', padding: '2rem', borderRadius: '24px' }}>
+             <h3 style={{ marginTop: 0, borderBottom: '1px solid rgba(255,255,255,0.1)', paddingBottom: '0.5rem' }}>📅 Programar Partido</h3>
+             <p style={{ fontSize: '0.85rem', color: '#9ca3af' }}>{partidoAProgramar.local_nombre} vs {partidoAProgramar.visitante_nombre}</p>
+             
+             <form onSubmit={handleSaveProgramacion} style={{ display: 'flex', flexDirection: 'column', gap: '1rem', marginTop: '1.5rem' }}>
+                <div>
+                   <label style={{ fontSize: '0.85rem', color: '#9ca3af', marginBottom: '0.5rem', display: 'block' }}>Sede Oficial / Cancha</label>
+                  <select
+                    required
+                    value={programacionForm.sede}
+                    onChange={e => setProgramacionForm({ ...programacionForm, sede: e.target.value })}
+                    style={{ width: '100%', padding: '0.8rem', background: 'rgba(0,0,0,0.3)', border: '1px solid rgba(255,255,255,0.1)', color: '#fff', borderRadius: '8px', outline: 'none' }}
+                  >
+                    <option value="">Selecciona una cancha registrada</option>
+                    {programacionForm.sede && !canchas.some((c) => c.nombre === programacionForm.sede) && (
+                      <option value={programacionForm.sede}>{programacionForm.sede} (actual)</option>
+                    )}
+                    {canchas.map((c) => (
+                      <option key={c.id} value={c.nombre}>{c.nombre}</option>
+                    ))}
+                  </select>
+                  {canchas.length === 0 && (
+                    <span style={{ marginTop: '0.35rem', fontSize: '0.75rem', color: '#fbbf24', display: 'block' }}>
+                      No hay canchas registradas. Agrégalas en el módulo "Gestión de Canchas / Sedes".
+                    </span>
+                  )}
+                </div>
+                <div>
+                   <label style={{ fontSize: '0.85rem', color: '#9ca3af', marginBottom: '0.5rem', display: 'block' }}>Horario Oficial</label>
+                   <input type="time" required value={programacionForm.horario} onChange={e => setProgramacionForm({...programacionForm, horario: e.target.value})} style={{ width: '100%', padding: '0.8rem', background: 'rgba(0,0,0,0.3)', border: '1px solid rgba(255,255,255,0.1)', color: '#fff', borderRadius: '8px', outline: 'none', colorScheme: 'dark' }} />
+                </div>
+                
+                <div style={{ display: 'flex', gap: '1rem', marginTop: '1rem' }}>
+                    <button type="button" onClick={() => setProgramacionOpen(false)} className="btn" style={{ flex: 1, background: 'transparent', color: '#9ca3af', border: '1px solid rgba(255,255,255,0.1)' }}>Cancelar</button>
+                    <button type="submit" className="btn btn-primary" style={{ flex: 1 }}>Guardar Fijación</button>
+                </div>
+             </form>
+          </div>
+        </div>
+      )}
+
+    </div>
+  );
+}
+
+const inputStatStyle = {
+    width: '60px', height: '38px', padding: '0.5rem', background: 'rgba(0,0,0,0.4)', border: '1px solid rgba(255,255,255,0.1)', color: '#fff', borderRadius: '8px', textAlign: 'center', outline: 'none'
+};
