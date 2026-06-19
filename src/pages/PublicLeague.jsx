@@ -9,7 +9,27 @@ export default function PublicLeague() {
   const [tenantData, setTenantData] = useState(null);
   const [error, setError] = useState('');
   const [activeTabMapping, setActiveTabMapping] = useState({});
-  const [jornadaActiva, setJornadaActiva] = useState('Todas');
+  const [filtroActivo, setFiltroActivo] = useState('Todas');
+
+  const FASES_ORDEN = [
+    'Dieciseisavos de Final',
+    'Octavos de Final',
+    'Cuartos de Final',
+    'Semifinal',
+    'Final',
+    'Tercer Lugar'
+  ];
+
+  const faseCorta = (fase) => {
+    if (!fase) return '';
+    if (fase.includes('Dieciseisavos')) return 'Dieciseisavos';
+    if (fase.includes('Octavos')) return 'Octavos';
+    if (fase.includes('Cuartos')) return 'Cuartos';
+    if (fase === 'Semifinal') return 'Semifinal';
+    if (fase === 'Final') return 'Final';
+    if (fase.includes('Tercer')) return 'Tercer Lugar';
+    return fase;
+  };
 
   useEffect(() => {
     const fetchPublicData = async () => {
@@ -60,7 +80,7 @@ export default function PublicLeague() {
       );
   };
 
-  const MatchCard = ({ p }) => {
+  const MatchCard = ({ p, esEliminacion }) => {
       const stats = p.stats || {};
       const activeTab = activeTabMapping[p.id] || 'CRONOLOGIA';
       
@@ -70,7 +90,9 @@ export default function PublicLeague() {
       return (
           <div style={{ background: '#fff', borderRadius: '12px', boxShadow: '0 4px 15px rgba(0,0,0,0.1)', overflow: 'hidden', marginBottom: '2rem', color: '#1f2937' }}>
              <div style={{ padding: '0.8rem 1.5rem', borderBottom: '1px solid #e5e7eb', display: 'flex', justifyContent: 'space-between', fontSize: '0.85rem', color: '#6b7280' }}>
-                <span>{tenantData.nombre_liga} · Jornada {p.jornada}</span>
+                <span>
+                  {tenantData.nombre_liga} · {esEliminacion && p.fase ? faseCorta(p.fase) : `Jornada ${p.jornada}`}
+                </span>
                 {p.estatus === 'Finalizado' ? (
                    <span style={{color: '#10b981', fontWeight: 'bold'}}>Finalizado</span>
                 ) : (
@@ -172,8 +194,18 @@ export default function PublicLeague() {
 
   if (!tenantData) return null;
 
-  const jornadasReales = [...new Set(partidos.map(p => p.jornada))].sort((a,b)=>a-b);
-  const partidosFiltrados = jornadaActiva === 'Todas' ? partidos : partidos.filter(p => p.jornada.toString() === jornadaActiva.toString());
+  const esEliminacion = partidos.some((p) => Boolean(p.fase));
+
+  const fasesReales = [...new Set(partidos.map((p) => p.fase).filter(Boolean))]
+    .sort((a, b) => FASES_ORDEN.indexOf(a) - FASES_ORDEN.indexOf(b));
+
+  const jornadasReales = [...new Set(partidos.map((p) => p.jornada))].sort((a, b) => a - b);
+
+  const partidosFiltrados = filtroActivo === 'Todas'
+    ? partidos
+    : esEliminacion
+      ? partidos.filter((p) => p.fase === filtroActivo)
+      : partidos.filter((p) => p.jornada.toString() === filtroActivo.toString());
 
   return (
     <div style={{ minHeight: '100vh', background: 'var(--bg-dark)'}}>
@@ -197,7 +229,7 @@ export default function PublicLeague() {
           <div className="avatar" style={{ width: '80px', height: '80px', fontSize: '2.5rem', marginBottom: '1rem', background: '#fff', color: '#1e1b4b'}}>{tenantData.nombre_liga.charAt(0)}</div>
           <h1 style={{ color: 'white', fontSize: '3rem', margin: 0, textShadow: '0 4px 20px rgba(0,0,0,0.5)', textAlign: 'center' }}>{tenantData.nombre_liga}</h1>
           <span className="badge active" style={{ marginTop: '1rem'}}>
-             Temporada Web Oficial
+             {esEliminacion ? 'Copa Eliminatoria' : 'Temporada Web Oficial'}
           </span>
       </div>
 
@@ -208,15 +240,23 @@ export default function PublicLeague() {
              <div style={{ flex: '1 1 500px' }}>
                 <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1.5rem' }}>
                    <h2 style={{color: 'white', margin: 0, textShadow: '0 2px 10px rgba(0,0,0,1)'}}>🏆 Cronograma</h2>
-                   <select value={jornadaActiva} onChange={e => setJornadaActiva(e.target.value)} style={{ padding: '0.6rem', background: 'rgba(255,255,255,0.1)', border: '1px solid rgba(255,255,255,0.2)', color: '#fff', borderRadius: '8px', outline: 'none' }}>
-                       <option value="Todas">Temporada Completa</option>
-                       {jornadasReales.map(j => <option key={j} value={j}>Ver Jornada {j}</option>)}
+                   <select value={filtroActivo} onChange={(e) => setFiltroActivo(e.target.value)} style={{ padding: '0.6rem', background: 'rgba(255,255,255,0.1)', border: '1px solid rgba(255,255,255,0.2)', color: '#fff', borderRadius: '8px', outline: 'none' }}>
+                       <option value="Todas">{esEliminacion ? 'Todas las fases' : 'Temporada Completa'}</option>
+                       {esEliminacion
+                         ? fasesReales.map((f) => (
+                             <option key={f} value={f}>{faseCorta(f)}</option>
+                           ))
+                         : jornadasReales.map((j) => (
+                             <option key={j} value={j}>Jornada {j}</option>
+                           ))}
                    </select>
                 </div>
-                {partidosFiltrados.slice().reverse().map(p => <MatchCard key={p.id} p={p}/>)}
+                {partidosFiltrados.slice().reverse().map((p) => <MatchCard key={p.id} p={p} esEliminacion={esEliminacion} />)}
                 {partidosFiltrados.length === 0 && (
                     <div className="glass-panel" style={{padding:'2rem', textAlign:'center', color: '#9ca3af'}}>
-                       La temporada acaba de iniciar o no hay información para esta jornada.
+                       {esEliminacion
+                         ? 'El torneo acaba de iniciar o no hay partidos en esta fase.'
+                         : 'La temporada acaba de iniciar o no hay información para esta jornada.'}
                     </div>
                 )}
              </div>
@@ -224,7 +264,9 @@ export default function PublicLeague() {
              {/* Standings General Table */}
              <div style={{ flex: '1 1 400px' }}>
                 <div className="glass-panel" style={{ padding: '2rem' }}>
-                  <h2 style={{ marginTop: 0, color: 'white', borderBottom: '1px solid rgba(255,255,255,0.1)', paddingBottom: '1rem', fontSize: '1.5rem'}}>Tabla de Posiciones</h2>
+                  <h2 style={{ marginTop: 0, color: 'white', borderBottom: '1px solid rgba(255,255,255,0.1)', paddingBottom: '1rem', fontSize: '1.5rem'}}>
+                    {esEliminacion ? 'Equipos en Competencia' : 'Tabla de Posiciones'}
+                  </h2>
                   
                   <table style={{ width: '100%', marginTop: '1rem', fontSize: '0.9rem'}}>
                      <thead>

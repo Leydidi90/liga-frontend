@@ -13,12 +13,16 @@ export default function ArbitroDashboard() {
   const [ligas, setLigas] = useState([]);
   const [selectedSlug, setSelectedSlug] = useState(() => localStorage.getItem('arb_slug') || '');
   const [partidos, setPartidos] = useState([]);
+  const [tablaGeneral, setTablaGeneral] = useState([]);
   const [equipos, setEquipos] = useState([]);
   const [jugadoresPorEquipo, setJugadoresPorEquipo] = useState({});
   const [multas, setMultas] = useState([]);
   const [jornadaFiltro, setJornadaFiltro] = useState('Todas');
   const [multaForm, setMultaForm] = useState({ tipo: 'equipo', equipo_nombre: '', jugador_nombre: '', jornada: '', motivo: '', monto: '' });
   const [savingMulta, setSavingMulta] = useState(false);
+  const [resultadoPartido, setResultadoPartido] = useState(null);
+  const [resultadoForm, setResultadoForm] = useState(null);
+  const [savingResultado, setSavingResultado] = useState(false);
 
   const loadDashboard = async (slug) => {
     const token = localStorage.getItem('arb_token');
@@ -41,6 +45,7 @@ export default function ArbitroDashboard() {
         localStorage.setItem('arb_slug', data.liga.slug);
       }
       setPartidos(Array.isArray(data.partidos) ? data.partidos : []);
+      setTablaGeneral(Array.isArray(data.tablaGeneral) ? data.tablaGeneral : []);
       setEquipos(Array.isArray(data.equipos) ? data.equipos : []);
       setJugadoresPorEquipo(data.jugadoresPorEquipo || {});
       setMultas(Array.isArray(data.multas) ? data.multas : []);
@@ -77,36 +82,7 @@ export default function ArbitroDashboard() {
   const jornadas = useMemo(() => [...new Set(partidos.map((p) => p.jornada))].sort((a, b) => a - b), [partidos]);
   const partidosFiltrados = jornadaFiltro === 'Todas' ? partidos : partidos.filter((p) => p.jornada?.toString() === jornadaFiltro.toString());
 
-  const teamStats = useMemo(() => {
-    const num = (v) => Number(v || 0);
-    const map = {};
-    const ensure = (nombre, escudo) => {
-      if (!nombre) return null;
-      if (!map[nombre]) map[nombre] = { nombre, escudo: escudo || '', pj: 0, gf: 0, gc: 0, faltas: 0, amarillas: 0, rojas: 0 };
-      if (escudo && !map[nombre].escudo) map[nombre].escudo = escudo;
-      return map[nombre];
-    };
-    partidosFiltrados.forEach((p) => {
-      const st = p.stats || {};
-      const faltas = st.faltas || { local: 0, vis: 0 };
-      const amarillas = st.amarillas || { local: 0, vis: 0 };
-      const rojas = st.rojas || { local: 0, vis: 0 };
-      const finalizado = p.estatus === 'Finalizado';
-      const local = ensure(p.local_nombre, p.local_escudo);
-      const visit = ensure(p.visitante_nombre, p.visitante_escudo);
-      if (local) {
-        local.gf += num(p.goles_local); local.gc += num(p.goles_visitante);
-        local.faltas += num(faltas.local); local.amarillas += num(amarillas.local); local.rojas += num(rojas.local);
-        if (finalizado) local.pj++;
-      }
-      if (visit) {
-        visit.gf += num(p.goles_visitante); visit.gc += num(p.goles_local);
-        visit.faltas += num(faltas.vis); visit.amarillas += num(amarillas.vis); visit.rojas += num(rojas.vis);
-        if (finalizado) visit.pj++;
-      }
-    });
-    return Object.values(map).sort((a, b) => (b.gf - b.gc) - (a.gf - a.gc) || b.gf - a.gf);
-  }, [partidosFiltrados]);
+  const teamStats = tablaGeneral;
 
   const jugadoresDelEquipo = multaForm.equipo_nombre ? (jugadoresPorEquipo[multaForm.equipo_nombre] || []) : [];
 
@@ -151,6 +127,56 @@ export default function ArbitroDashboard() {
       await loadDashboard(selectedSlug);
     } catch (err) {
       toast.error(err.message);
+    }
+  };
+
+  const abrirResultado = (p) => {
+    const st = p.stats || {};
+    const faltas = st.faltas || {};
+    const amarillas = st.amarillas || {};
+    const rojas = st.rojas || {};
+    const corners = st.corners || {};
+    setResultadoPartido(p);
+    setResultadoForm({
+      goles_local: p.goles_local ?? 0,
+      goles_visitante: p.goles_visitante ?? 0,
+      faltas_local: faltas.local ?? 0,
+      faltas_visitante: faltas.vis ?? 0,
+      corners_local: corners.local ?? 0,
+      corners_visitante: corners.vis ?? 0,
+      amarillas_local: amarillas.local ?? 0,
+      amarillas_visitante: amarillas.vis ?? 0,
+      rojas_local: rojas.local ?? 0,
+      rojas_visitante: rojas.vis ?? 0
+    });
+  };
+
+  const cerrarResultado = () => {
+    setResultadoPartido(null);
+    setResultadoForm(null);
+  };
+
+  const handleSubmitResultado = async (e) => {
+    e.preventDefault();
+    if (!resultadoPartido || !resultadoForm) return;
+    const token = localStorage.getItem('arb_token');
+    if (!token) { navigate('/arbitro/login'); return; }
+    setSavingResultado(true);
+    try {
+      const res = await fetch(`${API_URL}/api/arbitro/partidos/${resultadoPartido.id}`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+        body: JSON.stringify({ ...resultadoForm, slug: selectedSlug })
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || 'No se pudo registrar el resultado.');
+      toast.success(data.message || 'Resultado registrado.');
+      cerrarResultado();
+      await loadDashboard(selectedSlug);
+    } catch (err) {
+      toast.error(err.message);
+    } finally {
+      setSavingResultado(false);
     }
   };
 
@@ -207,18 +233,72 @@ export default function ArbitroDashboard() {
           </div>
         </div>
 
-        {/* Filtro de jornada */}
-        <div className="glass-panel" style={{ marginTop: '1rem', padding: '1rem 1.2rem', borderRadius: '14px', display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '0.6rem' }}>
-          <strong style={{ color: '#7dd3fc' }}>Jornadas en las que participas</strong>
-          <select value={jornadaFiltro} onChange={(e) => setJornadaFiltro(e.target.value)} style={{ padding: '0.5rem', background: 'rgba(14,165,233,0.1)', border: '1px solid rgba(14,165,233,0.4)', color: '#fff', borderRadius: '8px', outline: 'none' }}>
-            <option value="Todas">Todas las jornadas</option>
-            {jornadas.map((j) => <option key={j} value={j}>Jornada {j}</option>)}
-          </select>
+        {/* Mis partidos (solo los que dirige el árbitro) */}
+        <div className="glass-panel" style={{ marginTop: '1rem', padding: '1.2rem', borderRadius: '14px' }}>
+          <strong style={{ color: '#7dd3fc', fontSize: '1.03rem' }}>📋 Mis partidos a dirigir</strong>
+          <p style={{ color: '#94a3b8', fontSize: '0.8rem', margin: '0.35rem 0 0.8rem 0' }}>
+            Solo se muestran los partidos que el organizador te asignó para arbitrar.
+          </p>
+
+          {/* Botones para filtrar por jornada */}
+          <div style={{ display: 'flex', flexWrap: 'wrap', gap: '0.4rem' }}>
+            {['Todas', ...jornadas].map((j) => {
+              const value = j === 'Todas' ? 'Todas' : j;
+              const active = jornadaFiltro.toString() === value.toString();
+              return (
+                <button
+                  key={j}
+                  onClick={() => setJornadaFiltro(value)}
+                  style={{
+                    padding: '0.35rem 0.75rem',
+                    borderRadius: '999px',
+                    border: `1px solid ${active ? 'rgba(14,165,233,0.7)' : 'rgba(255,255,255,0.12)'}`,
+                    background: active ? 'linear-gradient(90deg,#0ea5e9,#22d3ee)' : 'rgba(255,255,255,0.03)',
+                    color: active ? '#012' : '#cbd5e1',
+                    fontWeight: 700,
+                    fontSize: '0.8rem',
+                    cursor: 'pointer'
+                  }}
+                >
+                  {j === 'Todas' ? 'Todas' : `Jornada ${j}`}
+                </button>
+              );
+            })}
+          </div>
+
+          {partidosFiltrados.length === 0 ? (
+            <p style={{ color: '#94a3b8', fontSize: '0.88rem', marginTop: '0.9rem' }}>No hay partidos {jornadaFiltro === 'Todas' ? 'registrados' : `en la jornada ${jornadaFiltro}`}.</p>
+          ) : (
+            <div style={{ display: 'grid', gap: '0.5rem', marginTop: '0.9rem' }}>
+              {partidosFiltrados.map((p) => {
+                const finalizado = p.estatus === 'Finalizado';
+                return (
+                  <div key={p.id} style={{ border: '1px solid rgba(255,255,255,0.08)', borderRadius: '10px', padding: '0.6rem 0.8rem', background: 'rgba(255,255,255,0.02)', display: 'flex', alignItems: 'center', gap: '0.8rem', flexWrap: 'wrap' }}>
+                    <span style={{ fontSize: '0.72rem', fontWeight: 700, color: '#7dd3fc', border: '1px solid rgba(14,165,233,0.35)', borderRadius: '8px', padding: '0.15rem 0.5rem' }}>J{p.jornada}</span>
+                    <div style={{ flex: 1, minWidth: '180px', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '0.6rem', textAlign: 'center' }}>
+                      <strong style={{ fontSize: '0.95rem' }}>{p.local_nombre}</strong>
+                      <span style={{ fontWeight: 'bold', color: finalizado ? '#34d399' : '#64748b' }}>
+                        {finalizado ? `${p.goles_local} - ${p.goles_visitante}` : 'vs'}
+                      </span>
+                      <strong style={{ fontSize: '0.95rem' }}>{p.visitante_nombre}</strong>
+                    </div>
+                    <span style={{ fontSize: '0.76rem', color: '#9ca3af', whiteSpace: 'nowrap' }}>🕒 {p.horario || '--'} · 📍 {p.sede || '--'}</span>
+                    <span style={{ fontSize: '0.7rem', fontWeight: 'bold', color: finalizado ? '#34d399' : '#fbbf24', border: `1px solid ${finalizado ? 'rgba(52,211,153,0.4)' : 'rgba(251,191,36,0.4)'}`, borderRadius: '999px', padding: '0.12rem 0.5rem', whiteSpace: 'nowrap' }}>
+                      {finalizado ? 'Finalizado' : 'Pendiente'}
+                    </span>
+                    <button onClick={() => abrirResultado(p)} style={{ border: finalizado ? '1px solid rgba(14,165,233,0.45)' : 'none', background: finalizado ? 'rgba(14,165,233,0.18)' : 'linear-gradient(90deg,#0ea5e9,#22d3ee)', color: finalizado ? '#7dd3fc' : '#012', borderRadius: '8px', padding: '0.4rem 0.8rem', cursor: 'pointer', fontWeight: 700, fontSize: '0.78rem', whiteSpace: 'nowrap' }}>
+                      {finalizado ? '✏️ Editar' : '⚽ Registrar'}
+                    </button>
+                  </div>
+                );
+              })}
+            </div>
+          )}
         </div>
 
-        {/* Estadísticas por jornada */}
+        {/* Tabla general de equipos */}
         <div className="glass-panel" style={{ marginTop: '1rem', padding: '1.2rem', borderRadius: '14px' }}>
-          <strong style={{ color: '#c4b5fd', fontSize: '1.03rem' }}>📊 Estadísticas de equipos {jornadaFiltro === 'Todas' ? '(todas las jornadas)' : `(jornada ${jornadaFiltro})`}</strong>
+          <strong style={{ color: '#c4b5fd', fontSize: '1.03rem' }}>📊 Tabla general de equipos (todas las jornadas)</strong>
           {teamStats.length === 0 ? (
             <p style={{ color: '#94a3b8', fontSize: '0.85rem', marginTop: '0.7rem' }}>Sin datos de partidos para mostrar.</p>
           ) : (
@@ -232,6 +312,7 @@ export default function ArbitroDashboard() {
                     <th style={{ padding: '0.6rem' }} title="Goles en contra">GC</th>
                     <th style={{ padding: '0.6rem' }} title="Diferencia">DIF</th>
                     <th style={{ padding: '0.6rem' }}>Faltas</th>
+                    <th style={{ padding: '0.6rem' }} title="Tiros de esquina">⛳ Córners</th>
                     <th style={{ padding: '0.6rem' }}>🟨</th>
                     <th style={{ padding: '0.6rem' }}>🟥</th>
                   </tr>
@@ -252,6 +333,7 @@ export default function ArbitroDashboard() {
                         <td style={{ padding: '0.55rem' }}>{ts.gc}</td>
                         <td style={{ padding: '0.55rem', color: dif > 0 ? '#34d399' : dif < 0 ? '#f87171' : '#9ca3af' }}>{dif > 0 ? `+${dif}` : dif}</td>
                         <td style={{ padding: '0.55rem' }}>{ts.faltas}</td>
+                        <td style={{ padding: '0.55rem', color: '#38bdf8' }}>{ts.corners}</td>
                         <td style={{ padding: '0.55rem', color: '#facc15' }}>{ts.amarillas}</td>
                         <td style={{ padding: '0.55rem', color: '#ef4444' }}>{ts.rojas}</td>
                       </tr>
@@ -355,47 +437,44 @@ export default function ArbitroDashboard() {
           </div>
         </div>
 
-        {/* Mis partidos */}
-        <div className="glass-panel" style={{ marginTop: '1rem', padding: '1.2rem', borderRadius: '14px' }}>
-          <strong style={{ color: '#7dd3fc', fontSize: '1.03rem' }}>📋 Mis partidos</strong>
-          {partidosFiltrados.length === 0 ? (
-            <p style={{ color: '#94a3b8', fontSize: '0.88rem', marginTop: '0.7rem' }}>No hay partidos {jornadaFiltro === 'Todas' ? 'registrados' : `en la jornada ${jornadaFiltro}`}.</p>
-          ) : (
-            <div style={{ display: 'grid', gap: '0.6rem', marginTop: '0.8rem' }}>
-              {partidosFiltrados.map((p) => {
-                const finalizado = p.estatus === 'Finalizado';
-                return (
-                  <div key={p.id} style={{ border: '1px solid rgba(255,255,255,0.08)', borderRadius: '12px', padding: '0.9rem', background: 'rgba(255,255,255,0.02)' }}>
-                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: '0.8rem', flexWrap: 'wrap' }}>
-                      <span style={{ fontSize: '0.76rem', color: '#94a3b8' }}>Jornada {p.jornada}</span>
-                      <span style={{ fontSize: '0.74rem', fontWeight: 'bold', color: finalizado ? '#34d399' : '#fbbf24', border: `1px solid ${finalizado ? 'rgba(52,211,153,0.4)' : 'rgba(251,191,36,0.4)'}`, borderRadius: '999px', padding: '0.15rem 0.55rem' }}>
-                        {finalizado ? 'Finalizado' : 'Pendiente'}
-                      </span>
-                    </div>
-                    <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '1rem', margin: '0.7rem 0' }}>
-                      <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', flex: 1, justifyContent: 'flex-end' }}>
-                        <strong style={{ fontSize: '1.05rem' }}>{p.local_nombre}</strong>
-                        {p.local_escudo && <img src={p.local_escudo} alt={p.local_nombre} style={{ width: '30px', height: '30px', borderRadius: '50%', objectFit: 'contain' }} />}
-                      </div>
-                      <span style={{ fontSize: '1.1rem', fontWeight: 'bold', color: finalizado ? '#34d399' : '#64748b', minWidth: '60px', textAlign: 'center' }}>
-                        {finalizado ? `${p.goles_local} - ${p.goles_visitante}` : 'vs'}
-                      </span>
-                      <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', flex: 1 }}>
-                        {p.visitante_escudo && <img src={p.visitante_escudo} alt={p.visitante_nombre} style={{ width: '30px', height: '30px', borderRadius: '50%', objectFit: 'contain' }} />}
-                        <strong style={{ fontSize: '1.05rem' }}>{p.visitante_nombre}</strong>
-                      </div>
-                    </div>
-                    <div style={{ display: 'flex', justifyContent: 'center', gap: '1.5rem', fontSize: '0.82rem', color: '#9ca3af' }}>
-                      <span style={{ color: p.sede ? '#facc15' : '#6b7280' }}>📍 {p.sede || 'Sin sede'}</span>
-                      <span style={{ color: p.horario ? '#34d399' : '#6b7280' }}>🕒 {p.horario || 'Sin horario'}</span>
-                    </div>
-                  </div>
-                );
-              })}
-            </div>
-          )}
-        </div>
       </div>
+
+      {resultadoPartido && resultadoForm && (
+        <div onClick={cerrarResultado} style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.7)', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '1rem', zIndex: 50 }}>
+          <div onClick={(e) => e.stopPropagation()} className="glass-panel" style={{ width: '100%', maxWidth: '480px', padding: '1.4rem', borderRadius: '16px', border: '1px solid rgba(255,255,255,0.14)', background: '#0b1220', maxHeight: '90vh', overflowY: 'auto' }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: '0.6rem' }}>
+              <strong style={{ color: '#7dd3fc', fontSize: '1.05rem' }}>⚽ Registrar resultado · Jornada {resultadoPartido.jornada}</strong>
+              <button onClick={cerrarResultado} style={{ background: 'transparent', border: 'none', color: '#94a3b8', fontSize: '1.2rem', cursor: 'pointer' }}>✕</button>
+            </div>
+            <form onSubmit={handleSubmitResultado} style={{ marginTop: '1rem' }}>
+              <div style={{ display: 'grid', gridTemplateColumns: '1fr auto 1fr', alignItems: 'center', gap: '0.4rem', textAlign: 'center', marginBottom: '0.6rem' }}>
+                <strong style={{ color: '#e2e8f0', fontSize: '0.9rem' }}>{resultadoPartido.local_nombre}</strong>
+                <span style={{ color: '#64748b', fontSize: '0.8rem' }}>vs</span>
+                <strong style={{ color: '#e2e8f0', fontSize: '0.9rem' }}>{resultadoPartido.visitante_nombre}</strong>
+              </div>
+              {[
+                { label: 'Goles', l: 'goles_local', v: 'goles_visitante' },
+                { label: 'Faltas', l: 'faltas_local', v: 'faltas_visitante' },
+                { label: '⛳ Córners', l: 'corners_local', v: 'corners_visitante' },
+                { label: '🟨 Amarillas', l: 'amarillas_local', v: 'amarillas_visitante' },
+                { label: '🟥 Rojas', l: 'rojas_local', v: 'rojas_visitante' }
+              ].map((row) => (
+                <div key={row.label} style={{ display: 'grid', gridTemplateColumns: '1fr 120px 1fr', alignItems: 'center', gap: '0.4rem', marginBottom: '0.6rem' }}>
+                  <input type="number" min="0" value={resultadoForm[row.l]} onChange={(e) => setResultadoForm({ ...resultadoForm, [row.l]: e.target.value })} style={{ ...inputStyle, textAlign: 'center' }} />
+                  <span style={{ textAlign: 'center', fontSize: '0.78rem', color: '#94a3b8' }}>{row.label}</span>
+                  <input type="number" min="0" value={resultadoForm[row.v]} onChange={(e) => setResultadoForm({ ...resultadoForm, [row.v]: e.target.value })} style={{ ...inputStyle, textAlign: 'center' }} />
+                </div>
+              ))}
+              <div style={{ display: 'flex', gap: '0.6rem', marginTop: '1.1rem' }}>
+                <button type="button" onClick={cerrarResultado} style={{ flex: 1, border: '1px solid rgba(255,255,255,0.15)', background: 'transparent', color: '#cbd5e1', borderRadius: '10px', padding: '0.6rem', cursor: 'pointer', fontWeight: 700 }}>Cancelar</button>
+                <button type="submit" disabled={savingResultado} style={{ flex: 1, border: 'none', background: 'linear-gradient(90deg,#0ea5e9,#22d3ee)', color: '#012', borderRadius: '10px', padding: '0.6rem', cursor: savingResultado ? 'not-allowed' : 'pointer', fontWeight: 800, opacity: savingResultado ? 0.6 : 1 }}>
+                  {savingResultado ? 'Guardando...' : 'Guardar resultado'}
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

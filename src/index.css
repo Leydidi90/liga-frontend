@@ -334,6 +334,13 @@ tr:hover td { background: rgba(255,255,255,0.03); }
   background: rgba(0,0,0,0.5);
 }
 
+/* Asegura que las opciones de los desplegables sean legibles (fondo oscuro / texto claro) */
+select option,
+select optgroup {
+  background-color: #1e293b;
+  color: #f8fafc;
+}
+
 /* ======== Specific Form Styling ======== */
 .payment-card-visual {
   background: linear-gradient(135deg, #0f172a, #09090b);

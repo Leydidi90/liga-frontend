@@ -41,7 +41,7 @@ export default function OrganizerDashboard() {
   const [equipoJugadoresSeleccionado, setEquipoJugadoresSeleccionado] = useState(null);
   const [programacionOpen, setProgramacionOpen] = useState(false);
   const [partidoAProgramar, setPartidoAProgramar] = useState(null);
-  const [programacionForm, setProgramacionForm] = useState({ sede: '', horario: '' });
+  const [programacionForm, setProgramacionForm] = useState({ sede: '', horario: '', arbitro_id: '' });
   const [nuevoArbitro, setNuevoArbitro] = useState('');
   const [nuevoRol, setNuevoRol] = useState('Central');
   const [nuevaMatricula, setNuevaMatricula] = useState('');
@@ -165,11 +165,12 @@ export default function OrganizerDashboard() {
       setTorneos(torneosList);
       const draft = {};
       torneosList.forEach((t) => {
+        const legacyTotal = Number(t.cobros?.mantenimiento_cancha || 0) +
+          Number(t.cobros?.arbitraje || 0) +
+          Number(t.cobros?.inscripcion_equipo || 0) +
+          Number(t.cobros?.costo_por_jugador || 0);
         draft[t.id] = {
-          mantenimiento_cancha: t.cobros?.mantenimiento_cancha ?? 0,
-          arbitraje: t.cobros?.arbitraje ?? 0,
-          inscripcion_equipo: t.cobros?.inscripcion_equipo ?? 0,
-          costo_por_jugador: t.cobros?.costo_por_jugador ?? 0
+          costo_total: t.cobros?.costo_total ?? legacyTotal ?? 0
         };
       });
       setEnrollmentConfigDraft(draft);
@@ -423,7 +424,7 @@ export default function OrganizerDashboard() {
 
   const openProgramacion = (partido) => {
     setPartidoAProgramar(partido);
-    setProgramacionForm({ sede: partido.sede || '', horario: partido.horario || '' });
+    setProgramacionForm({ sede: partido.sede || '', horario: partido.horario || '', arbitro_id: partido.arbitro_id || '' });
     setProgramacionOpen(true);
   };
 
@@ -929,65 +930,21 @@ export default function OrganizerDashboard() {
                               <strong style={{ fontSize: '0.86rem', color: '#c4b5fd' }}>Cobros para inscripción de representantes</strong>
                               <p style={{ margin: '0.45rem 0 0.7rem 0', color: '#94a3b8', fontSize: '0.8rem', lineHeight: 1.4 }}>
                                 Este apartado define lo que pagará cada equipo representante al inscribirse en este torneo.
-                                Es un <strong>cobro único por toda la jornada</strong>, sin importar el número de jugadores. Se calcula así: <strong>Total = Mantenimiento + Arbitraje + Inscripción + Costo extra</strong>.
+                                Es un <strong>cobro único por equipo</strong>, sin importar el número de jugadores.
                               </p>
-                              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '0.6rem', marginTop: '0.6rem' }}>
-                                <div>
-                                  <label style={{ display: 'block', fontSize: '0.75rem', color: '#a5b4fc', marginBottom: '0.3rem' }}>Mantenimiento de canchas (por jornada)</label>
-                                  <input
-                                    type="number"
-                                    min="0"
-                                    value={enrollmentConfigDraft[t.id]?.mantenimiento_cancha ?? 0}
-                                    onChange={(e) => setEnrollmentConfigDraft({
-                                      ...enrollmentConfigDraft,
-                                      [t.id]: { ...(enrollmentConfigDraft[t.id] || {}), mantenimiento_cancha: e.target.value }
-                                    })}
-                                    placeholder="Ej: 350"
-                                    style={{ width: '100%', padding: '0.55rem', borderRadius: '8px', background: 'rgba(0,0,0,0.3)', border: '1px solid rgba(255,255,255,0.1)', color: '#fff' }}
-                                  />
-                                </div>
-                                <div>
-                                  <label style={{ display: 'block', fontSize: '0.75rem', color: '#a5b4fc', marginBottom: '0.3rem' }}>Arbitraje (por jornada)</label>
-                                  <input
-                                    type="number"
-                                    min="0"
-                                    value={enrollmentConfigDraft[t.id]?.arbitraje ?? 0}
-                                    onChange={(e) => setEnrollmentConfigDraft({
-                                      ...enrollmentConfigDraft,
-                                      [t.id]: { ...(enrollmentConfigDraft[t.id] || {}), arbitraje: e.target.value }
-                                    })}
-                                    placeholder="Ej: 500"
-                                    style={{ width: '100%', padding: '0.55rem', borderRadius: '8px', background: 'rgba(0,0,0,0.3)', border: '1px solid rgba(255,255,255,0.1)', color: '#fff' }}
-                                  />
-                                </div>
-                                <div>
-                                  <label style={{ display: 'block', fontSize: '0.75rem', color: '#a5b4fc', marginBottom: '0.3rem' }}>Inscripción (por jornada)</label>
-                                  <input
-                                    type="number"
-                                    min="0"
-                                    value={enrollmentConfigDraft[t.id]?.inscripcion_equipo ?? 0}
-                                    onChange={(e) => setEnrollmentConfigDraft({
-                                      ...enrollmentConfigDraft,
-                                      [t.id]: { ...(enrollmentConfigDraft[t.id] || {}), inscripcion_equipo: e.target.value }
-                                    })}
-                                    placeholder="Ej: 1200"
-                                    style={{ width: '100%', padding: '0.55rem', borderRadius: '8px', background: 'rgba(0,0,0,0.3)', border: '1px solid rgba(255,255,255,0.1)', color: '#fff' }}
-                                  />
-                                </div>
-                                <div>
-                                  <label style={{ display: 'block', fontSize: '0.75rem', color: '#a5b4fc', marginBottom: '0.3rem' }}>Costo extra (por jornada)</label>
-                                  <input
-                                    type="number"
-                                    min="0"
-                                    value={enrollmentConfigDraft[t.id]?.costo_por_jugador ?? 0}
-                                    onChange={(e) => setEnrollmentConfigDraft({
-                                      ...enrollmentConfigDraft,
-                                      [t.id]: { ...(enrollmentConfigDraft[t.id] || {}), costo_por_jugador: e.target.value }
-                                    })}
-                                    placeholder="Ej: 80"
-                                    style={{ width: '100%', padding: '0.55rem', borderRadius: '8px', background: 'rgba(0,0,0,0.3)', border: '1px solid rgba(255,255,255,0.1)', color: '#fff' }}
-                                  />
-                                </div>
+                              <div style={{ marginTop: '0.6rem' }}>
+                                <label style={{ display: 'block', fontSize: '0.75rem', color: '#a5b4fc', marginBottom: '0.3rem' }}>Costo de inscripción (pago único por equipo)</label>
+                                <input
+                                  type="number"
+                                  min="0"
+                                  value={enrollmentConfigDraft[t.id]?.costo_total ?? 0}
+                                  onChange={(e) => setEnrollmentConfigDraft({
+                                    ...enrollmentConfigDraft,
+                                    [t.id]: { ...(enrollmentConfigDraft[t.id] || {}), costo_total: e.target.value }
+                                  })}
+                                  placeholder="Ej: 1500"
+                                  style={{ width: '100%', padding: '0.55rem', borderRadius: '8px', background: 'rgba(0,0,0,0.3)', border: '1px solid rgba(255,255,255,0.1)', color: '#fff' }}
+                                />
                               </div>
                               <p style={{ margin: '0.65rem 0 0 0', fontSize: '0.78rem', color: '#94a3b8' }}>
                                 La liga de inscripción abre un formulario para que el representante cree su usuario, elija este torneo y reciba el total a pagar.
@@ -1058,7 +1015,10 @@ export default function OrganizerDashboard() {
                 <tbody>
                     {partidosFiltrados.map(p => (
                     <tr key={p.id} style={{ borderBottom: '1px solid rgba(255,255,255,0.05)' }}>
-                        <td style={{ padding: '1rem', textAlign: 'center', color: '#9ca3af' }}>Jornada {p.jornada}</td>
+                        <td style={{ padding: '1rem', textAlign: 'center', color: '#9ca3af' }}>
+                            {p.fase && <div style={{ fontSize: '0.72rem', color: '#c4b5fd', fontWeight: 600, marginBottom: '0.2rem' }}>{p.fase}</div>}
+                            Jornada {p.jornada}
+                        </td>
                         <td style={{ padding: '1rem', textAlign: 'center' }}>
                             <div style={{ display: 'flex', alignItems: 'center', gap: '0.8rem', justifyContent: 'flex-end' }}>
                                 <strong style={{fontSize: '1.1rem'}}>{p.local_nombre}</strong>
@@ -1069,6 +1029,7 @@ export default function OrganizerDashboard() {
                             <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '0.4rem' }}>
                                 <span style={{ fontSize: '0.9rem', color: p.sede ? '#facc15' : '#6b7280', fontWeight: 'bold' }}>📍 {p.sede || 'Sin Sede'}</span>
                                 <span style={{ fontSize: '0.9rem', color: p.horario ? '#34d399' : '#6b7280' }}>🕒 {p.horario || 'Sin Horario'}</span>
+                                <span style={{ fontSize: '0.85rem', color: p.arbitro_nombre ? '#38bdf8' : '#6b7280' }}>👨‍⚖️ {p.arbitro_nombre || 'Sin Árbitro'}</span>
                                 <button onClick={() => openProgramacion(p)} className="btn btn-sm block-hover" style={{ background: 'rgba(255,255,255,0.05)', padding: '0.3rem 0.8rem', border: '1px solid rgba(255,255,255,0.1)', color: '#a78bfa', fontSize: '0.75rem', marginTop: '0.4rem' }}>📅 Fijar Fecha / Sede</button>
                             </div>
                         </td>
@@ -1403,6 +1364,24 @@ export default function OrganizerDashboard() {
                 <div>
                    <label style={{ fontSize: '0.85rem', color: '#9ca3af', marginBottom: '0.5rem', display: 'block' }}>Horario Oficial</label>
                    <input type="time" required value={programacionForm.horario} onChange={e => setProgramacionForm({...programacionForm, horario: e.target.value})} style={{ width: '100%', padding: '0.8rem', background: 'rgba(0,0,0,0.3)', border: '1px solid rgba(255,255,255,0.1)', color: '#fff', borderRadius: '8px', outline: 'none', colorScheme: 'dark' }} />
+                </div>
+                <div>
+                   <label style={{ fontSize: '0.85rem', color: '#9ca3af', marginBottom: '0.5rem', display: 'block' }}>Árbitro asignado</label>
+                   <select
+                     value={programacionForm.arbitro_id}
+                     onChange={e => setProgramacionForm({ ...programacionForm, arbitro_id: e.target.value })}
+                     style={{ width: '100%', padding: '0.8rem', background: 'rgba(0,0,0,0.3)', border: '1px solid rgba(255,255,255,0.1)', color: '#fff', borderRadius: '8px', outline: 'none' }}
+                   >
+                     <option value="">Sin árbitro asignado</option>
+                     {arbitros.map((a) => (
+                       <option key={a.id} value={a.id}>{a.nombre}{a.rol ? ` · ${a.rol}` : ''}</option>
+                     ))}
+                   </select>
+                   {arbitros.length === 0 && (
+                     <span style={{ marginTop: '0.35rem', fontSize: '0.75rem', color: '#fbbf24', display: 'block' }}>
+                       No hay árbitros registrados. Agrégalos en el módulo "Árbitros".
+                     </span>
+                   )}
                 </div>
                 
                 <div style={{ display: 'flex', gap: '1rem', marginTop: '1rem' }}>

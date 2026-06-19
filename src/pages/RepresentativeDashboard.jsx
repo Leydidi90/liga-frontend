@@ -17,8 +17,11 @@ const calculateCurpCheckDigit = (curp17) => {
   return String((10 - (sum % 10)) % 10);
 };
 
+const SKIP_CURP = import.meta.env.VITE_SKIP_CURP_VALIDATION === 'true';
+
 const isValidCurp = (curp) => {
   const value = String(curp || '').toUpperCase().trim();
+  if (SKIP_CURP) return value.length >= 5;
   if (!CURP_REGEX.test(value)) return false;
   const expectedDigit = calculateCurpCheckDigit(value.slice(0, 17));
   return expectedDigit !== null && expectedDigit === value.slice(17);
@@ -95,7 +98,6 @@ export default function RepresentativeDashboard() {
     if (!apellido_paterno || !apellido_materno) { toast.error('Debes capturar apellido paterno y materno.'); return; }
     if (!Number.isFinite(numero) || numero <= 0) { toast.error('Ingresa un número de playera válido.'); return; }
     if (!isValidCurp(curp)) { toast.error('La CURP del jugador no es válida.'); return; }
-    if (!newPlayer.foto_jugador) { toast.error('La foto del jugador es obligatoria.'); return; }
 
     const existentes = addPlayersFor?.jugadores || [];
     const todos = [...existentes, ...playersToAdd];
@@ -156,8 +158,6 @@ export default function RepresentativeDashboard() {
 
   const totalPagado = inscripciones.reduce((acc, ins) => acc + Number(ins.total_cobro || 0), 0);
   const totalJugadores = inscripciones.reduce((acc, ins) => acc + (Array.isArray(ins.jugadores) ? ins.jugadores.length : 0), 0);
-
-  const inputStyle = { width: '100%', padding: '0.6rem 0.7rem', borderRadius: '10px', border: '1px solid rgba(255,255,255,0.12)', background: 'rgba(0,0,0,0.3)', color: '#fff', outline: 'none', fontSize: '0.85rem' };
 
   return (
     <div style={{ minHeight: '100vh', background: 'radial-gradient(1000px 440px at 10% -10%, rgba(79,70,229,0.18), transparent 60%), radial-gradient(800px 380px at 100% 0, rgba(14,165,233,0.1), transparent 60%), #020202', color: '#fff', padding: '1.5rem', position: 'relative', overflow: 'hidden' }}>
@@ -416,7 +416,7 @@ export default function RepresentativeDashboard() {
 
       {addPlayersFor && (
         <div style={{ position: 'fixed', inset: 0, background: 'rgba(2,6,23,0.8)', backdropFilter: 'blur(7px)', zIndex: 10000, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '1rem' }}>
-          <div className="rep-modern-card" style={{ width: '100%', maxWidth: '640px', maxHeight: '92vh', overflowY: 'auto', padding: '1.3rem' }}>
+          <div className="rep-modern-card" style={{ width: '100%', maxWidth: '1040px', maxHeight: '92vh', overflowY: 'auto', padding: '1.3rem' }}>
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: '0.8rem' }}>
               <div>
                 <h3 style={{ margin: 0, color: '#e2e8f0', fontSize: '1.2rem' }}>Agregar jugadores</h3>
@@ -427,44 +427,110 @@ export default function RepresentativeDashboard() {
               <button onClick={() => setAddPlayersFor(null)} style={{ background: 'transparent', border: '1px solid rgba(255,255,255,0.15)', color: '#cbd5e1', borderRadius: '8px', padding: '0.3rem 0.6rem', cursor: 'pointer' }}>✕</button>
             </div>
 
-            <div style={{ marginTop: '1rem', display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '0.6rem' }}>
-              <input value={newPlayer.nombre} onChange={e => setNewPlayer({ ...newPlayer, nombre: e.target.value })} placeholder="Nombre(s)" style={inputStyle} />
-              <input value={newPlayer.numero_playera} onChange={e => setNewPlayer({ ...newPlayer, numero_playera: e.target.value })} type="number" min="1" placeholder="Número de playera" style={inputStyle} />
-              <input value={newPlayer.apellido_paterno} onChange={e => setNewPlayer({ ...newPlayer, apellido_paterno: e.target.value })} placeholder="Apellido paterno" style={inputStyle} />
-              <input value={newPlayer.apellido_materno} onChange={e => setNewPlayer({ ...newPlayer, apellido_materno: e.target.value })} placeholder="Apellido materno" style={inputStyle} />
-              <input value={newPlayer.curp} onChange={e => setNewPlayer({ ...newPlayer, curp: e.target.value.toUpperCase() })} placeholder="CURP" maxLength={18} style={{ ...inputStyle, textTransform: 'uppercase' }} />
-              <select value={newPlayer.rol_liderazgo} onChange={e => setNewPlayer({ ...newPlayer, rol_liderazgo: e.target.value })} style={inputStyle}>
-                <option value="Ninguno">Sin rol</option>
-                <option value="Capitán">Capitán</option>
-                <option value="Subcapitán">Subcapitán</option>
-              </select>
-              <label style={{ gridColumn: '1 / -1', display: 'flex', alignItems: 'center', gap: '0.8rem', padding: '0.55rem 0.7rem', borderRadius: '10px', border: '1px dashed rgba(255,255,255,0.2)', cursor: 'pointer', color: '#9ca3af', fontSize: '0.84rem' }}>
-                <span>📷 {newPlayer.foto_jugador ? 'Cambiar foto' : 'Subir foto del jugador'}</span>
-                <input type="file" accept="image/*" onChange={handlePlayerPhotoChange} style={{ display: 'none' }} />
-                {newPlayer.foto_jugador && <img src={newPlayer.foto_jugador} alt="preview" style={{ width: '36px', height: '36px', borderRadius: '50%', objectFit: 'cover', marginLeft: 'auto' }} />}
-              </label>
-            </div>
-            <button onClick={handleAddPlayerToList} className="rep-action" style={{ marginTop: '0.7rem', border: '1px solid rgba(52,211,153,0.4)', background: 'rgba(16,185,129,0.16)', color: '#34d399', borderRadius: '10px', padding: '0.5rem 0.9rem', cursor: 'pointer', fontWeight: 700, fontSize: '0.85rem' }}>
-              + Añadir a la lista
-            </button>
-
-            <div style={{ marginTop: '1rem' }}>
-              <strong style={{ color: '#c4b5fd', fontSize: '0.9rem' }}>Jugadores por inscribir ({playersToAdd.length})</strong>
-              {playersToAdd.length === 0 ? (
-                <p style={{ color: '#94a3b8', fontSize: '0.82rem', marginTop: '0.4rem' }}>Aún no has añadido jugadores a la lista.</p>
-              ) : (
-                <div style={{ marginTop: '0.5rem', display: 'grid', gap: '0.4rem' }}>
-                  {playersToAdd.map((j, idx) => (
-                    <div key={idx} style={{ display: 'flex', alignItems: 'center', gap: '0.7rem', background: 'rgba(0,0,0,0.25)', borderRadius: '10px', padding: '0.45rem 0.6rem' }}>
-                      {j.foto_jugador && <img src={j.foto_jugador} alt={j.nombre} style={{ width: '34px', height: '34px', borderRadius: '50%', objectFit: 'cover' }} />}
-                      <div style={{ flex: 1, minWidth: 0 }}>
-                        <div style={{ color: '#e2e8f0', fontSize: '0.85rem' }}>{[j.nombre, j.apellido_paterno, j.apellido_materno].filter(Boolean).join(' ')}</div>
-                        <div style={{ color: '#9ca3af', fontSize: '0.72rem' }}>#{j.numero_playera}{j.rol_liderazgo !== 'Ninguno' ? ` · ${j.rol_liderazgo}` : ''} · {j.curp}</div>
-                      </div>
-                      <button onClick={() => handleRemoveFromList(idx)} style={{ background: 'transparent', border: '1px solid rgba(248,113,113,0.4)', color: '#fca5a5', borderRadius: '8px', padding: '0.25rem 0.5rem', cursor: 'pointer', fontSize: '0.75rem' }}>Quitar</button>
-                    </div>
-                  ))}
-                </div>
+            <div style={{ marginTop: '1rem', border: '1px solid rgba(255,255,255,0.14)', borderRadius: '14px', padding: '1rem', background: 'linear-gradient(130deg, rgba(91,33,182,.14), rgba(2,6,23,.35))' }}>
+              <strong style={{ display: 'block', marginBottom: '0.7rem', color: '#c4b5fd' }}>Jugadores a inscribir</strong>
+              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(140px, 1fr))', gap: '0.5rem' }}>
+                <input
+                  value={newPlayer.nombre}
+                  onChange={e => setNewPlayer({ ...newPlayer, nombre: e.target.value })}
+                  placeholder="Nombre(s)"
+                  style={{ padding: '0.8rem', borderRadius: '10px', border: '1px solid rgba(255,255,255,0.12)', background: 'rgba(0,0,0,0.3)', color: '#fff' }}
+                />
+                <input
+                  value={newPlayer.apellido_paterno}
+                  onChange={e => setNewPlayer({ ...newPlayer, apellido_paterno: e.target.value })}
+                  placeholder="Apellido paterno"
+                  style={{ padding: '0.8rem', borderRadius: '10px', border: '1px solid rgba(255,255,255,0.12)', background: 'rgba(0,0,0,0.3)', color: '#fff' }}
+                />
+                <input
+                  value={newPlayer.apellido_materno}
+                  onChange={e => setNewPlayer({ ...newPlayer, apellido_materno: e.target.value })}
+                  placeholder="Apellido materno"
+                  style={{ padding: '0.8rem', borderRadius: '10px', border: '1px solid rgba(255,255,255,0.12)', background: 'rgba(0,0,0,0.3)', color: '#fff' }}
+                />
+                <input
+                  type="number"
+                  min="1"
+                  value={newPlayer.numero_playera}
+                  onChange={e => setNewPlayer({ ...newPlayer, numero_playera: e.target.value })}
+                  placeholder="Núm. playera"
+                  style={{ padding: '0.8rem', borderRadius: '10px', border: '1px solid rgba(255,255,255,0.12)', background: 'rgba(0,0,0,0.3)', color: '#fff' }}
+                />
+                <input
+                  value={newPlayer.curp}
+                  onChange={e => setNewPlayer({ ...newPlayer, curp: String(e.target.value || '').toUpperCase() })}
+                  placeholder="CURP del jugador"
+                  maxLength={18}
+                  style={{ padding: '0.8rem', borderRadius: '10px', border: '1px solid rgba(255,255,255,0.12)', background: 'rgba(0,0,0,0.3)', color: '#fff', textTransform: 'uppercase' }}
+                />
+                <select
+                  value={newPlayer.rol_liderazgo}
+                  onChange={e => setNewPlayer({ ...newPlayer, rol_liderazgo: e.target.value })}
+                  style={{ padding: '0.8rem', borderRadius: '10px', border: '1px solid rgba(255,255,255,0.12)', background: 'rgba(0,0,0,0.3)', color: '#fff' }}
+                >
+                  <option value="Ninguno">Sin rol</option>
+                  <option value="Capitán">Capitán</option>
+                  <option value="Subcapitán">Subcapitán</option>
+                </select>
+                <button type="button" className="rep-action" onClick={handleAddPlayerToList} style={{ width: '100%', padding: '0.8rem 1rem', borderRadius: '10px', border: 'none', background: 'linear-gradient(90deg,#4f46e5,#7c3aed)', color: '#fff', fontWeight: 'bold', cursor: 'pointer' }}>
+                  + Agregar
+                </button>
+              </div>
+              <div style={{ marginTop: '0.55rem', display: 'flex', alignItems: 'center', gap: '0.7rem' }}>
+                <input
+                  type="file"
+                  accept="image/*"
+                  onChange={handlePlayerPhotoChange}
+                  style={{ color: '#cbd5e1', fontSize: '0.82rem' }}
+                />
+                {newPlayer.foto_jugador ? (
+                  <img src={newPlayer.foto_jugador} alt="Preview jugador" style={{ width: '44px', height: '44px', borderRadius: '50%', objectFit: 'cover', border: '2px solid rgba(99,102,241,0.65)' }} />
+                ) : (
+                  <span style={{ fontSize: '0.8rem', color: '#94a3b8' }}>Foto obligatoria</span>
+                )}
+              </div>
+              <div style={{ marginTop: '0.75rem', border: '1px solid rgba(255,255,255,0.08)', borderRadius: '10px', overflowX: 'auto', background: 'rgba(2,6,23,0.5)' }}>
+                <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '0.9rem' }}>
+                  <thead>
+                    <tr style={{ background: 'rgba(99,102,241,0.2)' }}>
+                      <th style={{ textAlign: 'left', padding: '0.65rem 0.75rem' }}>#</th>
+                      <th style={{ textAlign: 'left', padding: '0.65rem 0.75rem' }}>Foto</th>
+                      <th style={{ textAlign: 'left', padding: '0.65rem 0.75rem' }}>Jugador</th>
+                      <th style={{ textAlign: 'center', padding: '0.65rem 0.75rem' }}>Número</th>
+                      <th style={{ textAlign: 'left', padding: '0.65rem 0.75rem' }}>Rol</th>
+                      <th style={{ textAlign: 'left', padding: '0.65rem 0.75rem' }}>CURP</th>
+                      <th style={{ textAlign: 'right', padding: '0.65rem 0.75rem' }}>Acción</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {playersToAdd.map((player, idx) => (
+                      <tr key={`${player.nombre}-${idx}`} style={{ borderTop: '1px solid rgba(255,255,255,0.06)' }}>
+                        <td style={{ padding: '0.6rem 0.75rem', color: '#94a3b8' }}>{idx + 1}</td>
+                        <td style={{ padding: '0.6rem 0.75rem' }}>
+                          {player.foto_jugador ? (
+                            <img src={player.foto_jugador} alt={`${player.nombre}`} style={{ width: '38px', height: '38px', borderRadius: '50%', objectFit: 'cover', border: '2px solid rgba(99,102,241,0.5)' }} />
+                          ) : (
+                            <span style={{ color: '#64748b', fontSize: '0.8rem' }}>Sin foto</span>
+                          )}
+                        </td>
+                        <td style={{ padding: '0.6rem 0.75rem', color: '#e5e7eb', fontWeight: 600 }}>
+                          {player.nombre} {player.apellido_paterno} {player.apellido_materno}
+                        </td>
+                        <td style={{ padding: '0.6rem 0.75rem', textAlign: 'center', color: '#c4b5fd' }}>#{player.numero_playera}</td>
+                        <td style={{ padding: '0.6rem 0.75rem', color: player.rol_liderazgo === 'Capitán' ? '#fbbf24' : player.rol_liderazgo === 'Subcapitán' ? '#a5b4fc' : '#94a3b8' }}>{player.rol_liderazgo || 'Ninguno'}</td>
+                        <td style={{ padding: '0.6rem 0.75rem', color: '#fef08a', fontFamily: 'monospace' }}>{player.curp}</td>
+                        <td style={{ padding: '0.6rem 0.75rem', textAlign: 'right' }}>
+                          <button type="button" className="rep-action" onClick={() => handleRemoveFromList(idx)} style={{ background: 'transparent', color: '#f87171', border: '1px solid rgba(248,113,113,0.4)', borderRadius: '8px', padding: '0.25rem 0.55rem', cursor: 'pointer' }}>
+                            Quitar
+                          </button>
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+              {playersToAdd.length === 0 && (
+                <p style={{ margin: '0.65rem 0 0 0', color: '#94a3b8', fontSize: '0.85rem' }}>Aún no has agregado jugadores. Debes incluir nombre, apellidos y número de playera{SKIP_CURP ? '' : ', y CURP válida'}.</p>
               )}
             </div>
 

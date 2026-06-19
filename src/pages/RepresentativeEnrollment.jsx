@@ -19,8 +19,11 @@ const calculateCurpCheckDigit = (curp17) => {
   return String(digit);
 };
 
+const SKIP_CURP = import.meta.env.VITE_SKIP_CURP_VALIDATION === 'true';
+
 const isValidCurp = (curp) => {
   const value = String(curp || '').toUpperCase().trim();
+  if (SKIP_CURP) return value.length >= 5;
   if (!CURP_REGEX.test(value)) return false;
   const expectedDigit = calculateCurpCheckDigit(value.slice(0, 17));
   return expectedDigit !== null && expectedDigit === value.slice(17);
@@ -125,7 +128,8 @@ export default function RepresentativeEnrollment() {
       toast.error('La CURP del jugador no es válida.');
       return;
     }
-    if (form.jugadores.some((j) => j.nombre.toLowerCase() === nombre.toLowerCase())) {
+    const fullKey = `${nombre}|${apellido_paterno}|${apellido_materno}`.toLowerCase();
+    if (form.jugadores.some((j) => `${j.nombre}|${j.apellido_paterno}|${j.apellido_materno}`.toLowerCase() === fullKey)) {
       toast.error('Ese jugador ya fue agregado.');
       return;
     }
@@ -135,10 +139,6 @@ export default function RepresentativeEnrollment() {
     }
     if (form.jugadores.some((j) => String(j.curp || '').toUpperCase() === curp)) {
       toast.error('Esa CURP ya fue registrada en este equipo.');
-      return;
-    }
-    if (!newPlayerPhoto) {
-      toast.error('La foto del jugador es obligatoria.');
       return;
     }
     if (rol_liderazgo === 'Capitán' && form.jugadores.some((j) => j.rol_liderazgo === 'Capitán')) {
@@ -180,13 +180,14 @@ export default function RepresentativeEnrollment() {
 
   const totals = useMemo(() => {
     const cobros = torneoInfo?.cobros || {};
-    const mantenimiento = Number(cobros.mantenimiento_cancha || 0);
-    const arbitraje = Number(cobros.arbitraje || 0);
-    const inscripcion = Number(cobros.inscripcion_equipo || 0);
-    const costoExtra = Number(cobros.costo_por_jugador || 0);
-    const costoJornada = mantenimiento + arbitraje + inscripcion + costoExtra;
-    const totalFinal = costoJornada;
-    return { mantenimiento, arbitraje, inscripcion, costoExtra, costoJornada, totalFinal };
+    const legacyTotal = Number(cobros.mantenimiento_cancha || 0) +
+      Number(cobros.arbitraje || 0) +
+      Number(cobros.inscripcion_equipo || 0) +
+      Number(cobros.costo_por_jugador || 0);
+    const totalFinal = cobros.costo_total !== undefined && cobros.costo_total !== null
+      ? Number(cobros.costo_total || 0)
+      : legacyTotal;
+    return { totalFinal };
   }, [torneoInfo, jugadoresList.length]);
 
   const handleSubmit = async (e) => {
@@ -197,10 +198,6 @@ export default function RepresentativeEnrollment() {
     }
     if (!form.color_playera || !form.color_short || !form.color_medias) {
       toast.error('Debes indicar color de playera, short y medias.');
-      return;
-    }
-    if (jugadoresList.length === 0) {
-      toast.error('Agrega al menos un jugador para continuar.');
       return;
     }
     setPaymentError('');
@@ -346,11 +343,13 @@ export default function RepresentativeEnrollment() {
               Inscripción de Representante de Equipo
             </h2>
             <p style={{ color: '#94a3b8', marginTop: 0, marginBottom: '.35rem' }}>
-              Registra tu equipo de forma profesional: define uniforme, agrega jugadores y valida tu costo final antes de enviar.
+              Registra tu equipo de forma profesional y realiza el pago de inscripción para completar tu registro.
             </p>
           </div>
           <div style={{ display: 'flex', gap: '.45rem', flexWrap: 'wrap' }}>
+            {!SKIP_CURP && (
             <span style={{ fontSize: '.78rem', padding: '.3rem .55rem', borderRadius: '999px', border: '1px solid rgba(59,130,246,.35)', color: '#93c5fd', background: 'rgba(30,58,138,.25)', animation: 'pulseSoft 2.2s ease-in-out infinite' }}>CURP validada</span>
+            )}
             <span style={{ fontSize: '.78rem', padding: '.3rem .55rem', borderRadius: '999px', border: '1px solid rgba(236,72,153,.35)', color: '#f9a8d4', background: 'rgba(131,24,67,.2)', animation: 'pulseSoft 2.5s ease-in-out infinite' }}>Costo en tiempo real</span>
           </div>
         </div>
@@ -380,138 +379,13 @@ export default function RepresentativeEnrollment() {
           <div style={{ border: '1px solid rgba(255,255,255,0.14)', borderRadius: '14px', padding: '1rem', background: 'linear-gradient(130deg, rgba(67,56,202,.18), rgba(2,6,23,.3))', animation: 'floatUp 0.45s ease-out' }}>
             <strong style={{ display: 'block', marginBottom: '0.75rem', color: '#c4b5fd' }}>Uniforme del equipo</strong>
             <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))', gap: '0.6rem' }}>
-              <input value={form.color_playera} onChange={(e) => setForm({ ...form, color_playera: e.target.value })} placeholder="Color playera (Ej: Azul marino)" style={{ padding: '0.75rem', borderRadius: '10px', border: '1px solid rgba(255,255,255,0.12)', background: 'rgba(0,0,0,0.3)', color: '#fff' }} />
-              <input value={form.color_short} onChange={(e) => setForm({ ...form, color_short: e.target.value })} placeholder="Color short (Ej: Blanco)" style={{ padding: '0.75rem', borderRadius: '10px', border: '1px solid rgba(255,255,255,0.12)', background: 'rgba(0,0,0,0.3)', color: '#fff' }} />
-              <input value={form.color_medias} onChange={(e) => setForm({ ...form, color_medias: e.target.value })} placeholder="Color medias (Ej: Azul)" style={{ padding: '0.75rem', borderRadius: '10px', border: '1px solid rgba(255,255,255,0.12)', background: 'rgba(0,0,0,0.3)', color: '#fff' }} />
+              <input required value={form.color_playera} onChange={(e) => setForm({ ...form, color_playera: e.target.value })} placeholder="Color playera (Ej: Azul marino)" style={{ padding: '0.75rem', borderRadius: '10px', border: '1px solid rgba(255,255,255,0.12)', background: 'rgba(0,0,0,0.3)', color: '#fff' }} />
+              <input required value={form.color_short} onChange={(e) => setForm({ ...form, color_short: e.target.value })} placeholder="Color short (Ej: Blanco)" style={{ padding: '0.75rem', borderRadius: '10px', border: '1px solid rgba(255,255,255,0.12)', background: 'rgba(0,0,0,0.3)', color: '#fff' }} />
+              <input required value={form.color_medias} onChange={(e) => setForm({ ...form, color_medias: e.target.value })} placeholder="Color medias (Ej: Azul)" style={{ padding: '0.75rem', borderRadius: '10px', border: '1px solid rgba(255,255,255,0.12)', background: 'rgba(0,0,0,0.3)', color: '#fff' }} />
             </div>
           </div>
 
-          <div style={{ border: '1px solid rgba(255,255,255,0.14)', borderRadius: '14px', padding: '1rem', background: 'linear-gradient(130deg, rgba(91,33,182,.14), rgba(2,6,23,.35))', animation: 'floatUp 0.55s ease-out' }}>
-            <strong style={{ display: 'block', marginBottom: '0.7rem', color: '#c4b5fd' }}>Jugadores a inscribir</strong>
-            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(140px, 1fr))', gap: '0.5rem' }}>
-              <input
-                value={newPlayerName}
-                onChange={(e) => setNewPlayerName(e.target.value)}
-                placeholder="Nombre(s)"
-                style={{ padding: '0.8rem', borderRadius: '10px', border: '1px solid rgba(255,255,255,0.12)', background: 'rgba(0,0,0,0.3)', color: '#fff' }}
-              />
-              <input
-                value={newPlayerApellidoPaterno}
-                onChange={(e) => setNewPlayerApellidoPaterno(e.target.value)}
-                placeholder="Apellido paterno"
-                style={{ padding: '0.8rem', borderRadius: '10px', border: '1px solid rgba(255,255,255,0.12)', background: 'rgba(0,0,0,0.3)', color: '#fff' }}
-              />
-              <input
-                value={newPlayerApellidoMaterno}
-                onChange={(e) => setNewPlayerApellidoMaterno(e.target.value)}
-                placeholder="Apellido materno"
-                style={{ padding: '0.8rem', borderRadius: '10px', border: '1px solid rgba(255,255,255,0.12)', background: 'rgba(0,0,0,0.3)', color: '#fff' }}
-              />
-              <input
-                type="number"
-                min="1"
-                value={newPlayerNumber}
-                onChange={(e) => setNewPlayerNumber(e.target.value)}
-                placeholder="Núm. playera"
-                style={{ padding: '0.8rem', borderRadius: '10px', border: '1px solid rgba(255,255,255,0.12)', background: 'rgba(0,0,0,0.3)', color: '#fff' }}
-              />
-              <input
-                value={newPlayerCurp}
-                onChange={(e) => setNewPlayerCurp(String(e.target.value || '').toUpperCase())}
-                placeholder="CURP del jugador"
-                maxLength={18}
-                style={{ padding: '0.8rem', borderRadius: '10px', border: '1px solid rgba(255,255,255,0.12)', background: 'rgba(0,0,0,0.3)', color: '#fff' }}
-              />
-              <select
-                value={newPlayerLeadership}
-                onChange={(e) => setNewPlayerLeadership(e.target.value)}
-                style={{ padding: '0.8rem', borderRadius: '10px', border: '1px solid rgba(255,255,255,0.12)', background: 'rgba(0,0,0,0.3)', color: '#fff' }}
-              >
-                <option value="Ninguno">Sin rol</option>
-                <option value="Capitán">Capitán</option>
-                <option value="Subcapitán">Subcapitán</option>
-              </select>
-              <button type="button" className="fx-btn" onClick={handleAddPlayer} style={{ width: '100%', padding: '0.8rem 1rem', borderRadius: '10px', border: 'none', background: 'linear-gradient(90deg,#4f46e5,#7c3aed)', color: '#fff', fontWeight: 'bold', cursor: 'pointer' }}>
-                + Agregar
-              </button>
-            </div>
-            <div style={{ marginTop: '0.55rem', display: 'flex', alignItems: 'center', gap: '0.7rem' }}>
-              <input
-                type="file"
-                accept="image/*"
-                onChange={handlePlayerPhotoChange}
-                style={{ color: '#cbd5e1', fontSize: '0.82rem' }}
-              />
-              {newPlayerPhoto ? (
-                <img src={newPlayerPhoto} alt="Preview jugador" style={{ width: '44px', height: '44px', borderRadius: '50%', objectFit: 'cover', border: '2px solid rgba(99,102,241,0.65)' }} />
-              ) : (
-                <span style={{ fontSize: '0.8rem', color: '#94a3b8' }}>Foto obligatoria</span>
-              )}
-            </div>
-            <div style={{ marginTop: '0.75rem', border: '1px solid rgba(255,255,255,0.08)', borderRadius: '10px', overflowX: 'auto', background: 'rgba(2,6,23,0.5)' }}>
-              <table style={{ width: '100%', minWidth: '860px', borderCollapse: 'collapse', fontSize: '0.9rem' }}>
-                <thead>
-                  <tr style={{ background: 'rgba(99,102,241,0.2)' }}>
-                    <th style={{ textAlign: 'left', padding: '0.65rem 0.75rem' }}>#</th>
-                    <th style={{ textAlign: 'left', padding: '0.65rem 0.75rem' }}>Foto</th>
-                    <th style={{ textAlign: 'left', padding: '0.65rem 0.75rem' }}>Jugador</th>
-                    <th style={{ textAlign: 'center', padding: '0.65rem 0.75rem' }}>Número</th>
-                    <th style={{ textAlign: 'left', padding: '0.65rem 0.75rem' }}>Rol</th>
-                    <th style={{ textAlign: 'left', padding: '0.65rem 0.75rem' }}>CURP</th>
-                    <th style={{ textAlign: 'right', padding: '0.65rem 0.75rem' }}>Acción</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {jugadoresList.map((player, idx) => (
-                    <tr key={`${player.nombre}-${idx}`} style={{ borderTop: '1px solid rgba(255,255,255,0.06)', animation: 'floatUp 0.25s ease-out' }}>
-                      <td style={{ padding: '0.6rem 0.75rem', color: '#94a3b8' }}>{idx + 1}</td>
-                      <td style={{ padding: '0.6rem 0.75rem' }}>
-                        {player.foto_jugador ? (
-                          <img src={player.foto_jugador} alt={`${player.nombre}`} style={{ width: '38px', height: '38px', borderRadius: '50%', objectFit: 'cover', border: '2px solid rgba(99,102,241,0.5)' }} />
-                        ) : (
-                          <span style={{ color: '#64748b', fontSize: '0.8rem' }}>Sin foto</span>
-                        )}
-                      </td>
-                      <td style={{ padding: '0.6rem 0.75rem', color: '#e5e7eb', fontWeight: 600 }}>
-                        {player.nombre} {player.apellido_paterno} {player.apellido_materno}
-                      </td>
-                      <td style={{ padding: '0.6rem 0.75rem', textAlign: 'center', color: '#c4b5fd' }}>#{player.numero_playera}</td>
-                      <td style={{ padding: '0.6rem 0.75rem', color: player.rol_liderazgo === 'Capitán' ? '#fbbf24' : player.rol_liderazgo === 'Subcapitán' ? '#a5b4fc' : '#94a3b8' }}>{player.rol_liderazgo || 'Ninguno'}</td>
-                      <td style={{ padding: '0.6rem 0.75rem', color: '#fef08a', fontFamily: 'monospace' }}>{player.curp}</td>
-                      <td style={{ padding: '0.6rem 0.75rem', textAlign: 'right' }}>
-                        <button type="button" className="fx-btn" onClick={() => handleRemovePlayer(idx)} style={{ background: 'transparent', color: '#f87171', border: '1px solid rgba(248,113,113,0.4)', borderRadius: '8px', padding: '0.25rem 0.55rem', cursor: 'pointer' }}>
-                          Quitar
-                        </button>
-                      </td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
-            {jugadoresList.length === 0 && (
-              <p style={{ margin: '0.65rem 0 0 0', color: '#94a3b8', fontSize: '0.85rem' }}>Aún no has agregado jugadores. Debes incluir nombre, número y CURP válida.</p>
-            )}
-          </div>
-
-          {torneoInfo && (
-            <div style={{ border: '1px solid rgba(59,130,246,0.45)', borderRadius: '14px', padding: '1rem', background: 'linear-gradient(120deg, rgba(30,58,138,0.35), rgba(30,64,175,0.18))', animation: 'pulseGlow 1.8s ease-in-out infinite', boxShadow: 'inset 0 0 30px rgba(37,99,235,.12)' }}>
-              <strong style={{ fontSize: '1.1rem' }}>{torneoInfo.nombre}</strong>
-              <div style={{ marginTop: '0.6rem', color: '#cbd5e1', fontSize: '0.9rem', display: 'grid', gap: '0.35rem' }}>
-                <div>Mantenimiento por jornada: <strong>${totals.mantenimiento.toFixed(2)}</strong></div>
-                <div>Arbitraje por jornada: <strong>${totals.arbitraje.toFixed(2)}</strong></div>
-                <div>Inscripción por jornada: <strong>${totals.inscripcion.toFixed(2)}</strong></div>
-                <div>Costo adicional por jornada: <strong>${totals.costoExtra.toFixed(2)}</strong></div>
-                <div>
-                  Jugadores inscritos: <strong>{jugadoresList.length}</strong>
-                </div>
-              </div>
-              <div style={{ marginTop: '0.6rem', color: '#fbbf24', fontWeight: 'bold', fontSize: '1.25rem' }}>
-                Total final a pagar (cobro único por jornada): ${totals.totalFinal.toFixed(2)}
-              </div>
-            </div>
-          )}
-
-          <button type="submit" disabled={saving || jugadoresList.length === 0} className="btn btn-primary fx-btn" style={{ padding: '1rem', marginTop: '0.45rem', fontWeight: 'bold', fontSize: '1.05rem', background: 'linear-gradient(90deg, #4f46e5, #7c3aed, #a855f7)', border: 'none', borderRadius: '12px' }}>
+          <button type="submit" disabled={saving} className="btn btn-primary fx-btn" style={{ padding: '1rem', marginTop: '0.45rem', fontWeight: 'bold', fontSize: '1.05rem', background: 'linear-gradient(90deg, #4f46e5, #7c3aed, #a855f7)', border: 'none', borderRadius: '12px' }}>
             {saving ? 'Procesando...' : 'Inscribirme al torneo'}
           </button>
         </form>
